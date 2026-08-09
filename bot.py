@@ -136,7 +136,56 @@ def tznow():
         return datetime.now()
 
 
+def plan_order():
+    """Порядок меню: недели из расписания, затем сохранённые случайные."""
+    return [w["id"] for w in store.all_weeks()] + [g["id"] for g in store.all_generated()]
+
+
+def next_plan_id(cur):
+    """Какое меню будет следующим: выбранное вручную или следующее по порядку."""
+    chosen = store.get_setting("next_plan")
+    if chosen and chosen != cur and store.get_week(chosen):
+        return chosen
+    ids = plan_order()
+    if not ids:
+        return None
+    if cur in ids:
+        return ids[(ids.index(cur) + 1) % len(ids)]
+    return ids[0]
+
+
+def week_monday(d):
+    return d - timedelta(days=d.weekday())
+
+
+def maybe_rollover():
+    """Началась новая календарная неделя — переходим на следующее меню.
+    Возвращает новое меню, если переключились."""
+    if store.get_setting("auto_next", "1") != "1":
+        return None
+    wid = store.get_setting("active_plan")
+    started = store.get_setting("active_started")
+    if not wid or not started:
+        return None
+    try:
+        s = date.fromisoformat(started)
+    except ValueError:
+        return None
+    today = tznow().date()
+    if week_monday(today) <= week_monday(s):
+        return None                      # неделя ещё не закончилась
+    nxt = next_plan_id(wid)
+    if not nxt or nxt == wid:
+        return None
+    store.set_setting("active_plan", nxt)
+    store.set_setting("active_started", today.isoformat())
+    store.del_setting("next_plan")       # разовый выбор использован
+    logging.info("Новая неделя: перешли с %s на %s", wid, nxt)
+    return store.get_week(nxt)
+
+
 def active_plan():
+    maybe_rollover()
     wid = store.get_setting("active_plan")
     return store.get_week(wid) if wid else None
 
@@ -247,6 +296,7 @@ async def cb_today(c: CallbackQuery):
 @dp.callback_query(F.data == "actsel")
 async def cb_active_select(c: CallbackQuery):
     cur = store.get_setting("active_plan")
+    auto = store.get_setting("auto_next", "1") == "1"
     rows = [[B("— 📅 Из расписания", "noop")]]
     for w in store.all_weeks():
         mark = "✅ " if w["id"] == cur else ""
@@ -257,12 +307,72 @@ async def cb_active_select(c: CallbackQuery):
         for g in gen:
             mark = "✅ " if g["id"] == cur else ""
             rows.append([B(f"{mark}{g['label']}", f"act:{g['id']}")])
+    rows.append([B(f"🔄 Менять автоматически: {'вкл' if auto else 'выкл'}", "autonext")])
     if cur:
+        nxt = store.get_week(next_plan_id(cur))
+        rows.append([B(f"⏭ Следующее: {nxt['label'] if nxt else '—'}"[:60], "nxtsel")])
         rows.append([B("✖︎ Не питаться по плану", "actoff")])
     rows.append([B("‹ Настройки", "settings"), B("⌂ Меню", "menu")])
-    await safe_edit(c.message, "По какому меню сейчас питаемся?\n"
-                               "От него зависят утренние напоминания «что сегодня».", KB(rows))
+    txt = ("По какому меню сейчас питаемся?\n"
+           "От него зависят утренние напоминания «что сегодня».\n\n")
+    txt += ("🔄 В понедельник бот сам перейдёт на следующее меню."
+            if auto else "🔄 Автопереключение выключено — меняешь вручную.")
+    await safe_edit(c.message, txt, KB(rows))
     await c.answer()
+
+
+@dp.callback_query(F.data == "autonext")
+async def cb_auto_next(c: CallbackQuery):
+    now = store.get_setting("auto_next", "1") == "1"
+    store.set_setting("auto_next", "0" if now else "1")
+    await c.answer("Автопереключение " + ("выключено" if now else "включено"))
+    await cb_active_select(c)
+
+
+@dp.callback_query(F.data == "nxtsel")
+async def cb_next_select(c: CallbackQuery):
+    cur = store.get_setting("active_plan")
+    chosen = store.get_setting("next_plan")
+    rows = [[B(("✅ " if not chosen else "") + "По порядку (следующее в списке)", "nxt:auto")]]
+    for w in store.all_weeks() + store.all_generated():
+        if w["id"] == cur:
+            continue
+        mark = "✅ " if w["id"] == chosen else ""
+        rows.append([B(f"{mark}{w['label']}"[:60], f"nxt:{w['id']}")])
+    rows.append([B("⏭ Перейти прямо сейчас", "nxtnow")])
+    rows.append([B("‹ Назад", "actsel"), B("⌂ Меню", "menu")])
+    await safe_edit(c.message,
+                    "Какое меню включить, когда закончится текущая неделя?\n"
+                    "Переключение произойдёт в понедельник.", KB(rows))
+    await c.answer()
+
+
+@dp.callback_query(F.data.startswith("nxt:"))
+async def cb_next_set(c: CallbackQuery):
+    v = c.data.split(":", 1)[1]
+    if v == "auto":
+        store.del_setting("next_plan")
+        await c.answer("Буду брать следующее по порядку")
+    else:
+        store.set_setting("next_plan", v)
+        w = store.get_week(v)
+        await c.answer(f"Следующее: {w['label'] if w else v}")
+    await cb_next_select(c)
+
+
+@dp.callback_query(F.data == "nxtnow")
+async def cb_next_now(c: CallbackQuery):
+    cur = store.get_setting("active_plan")
+    nxt = next_plan_id(cur)
+    w = store.get_week(nxt) if nxt else None
+    if not w:
+        return await c.answer("Некуда переключаться", show_alert=True)
+    store.set_setting("active_plan", nxt)
+    store.set_setting("active_started", tznow().date().isoformat())
+    store.del_setting("next_plan")
+    await c.answer("Переключил")
+    txt, kb = day_card(w, tznow().date(), "🍽 Сегодня")
+    await safe_edit(c.message, f"✅ Теперь питаемся по: {w['label']}\n\n" + (txt or ""), kb)
 
 
 @dp.callback_query(F.data.startswith("act:"))
@@ -556,6 +666,8 @@ def settings_kb():
     rows = [
         [B("➖", "p:-"), B(f"👥 {p} чел.", "noop"), B("➕", "p:+")],
         [B(f"▶️ Текущее меню: {cur}"[:60], "actsel")],
+        [B(("⏭ Дальше: " + (store.get_week(next_plan_id(w["id"]))or{}).get("label","—")
+            if w and store.get_setting("auto_next", "1") == "1" else "⏭ Автопереход выключен")[:60], "nxtsel")],
         [B(f"🌅 Утром «что сегодня»: {mt if rem_on('morning_on') else 'выкл'}", "remmorn")],
         [B(f"🌙 Вечером «что готовим завтра»: {'вкл' if rem_on('evening_on') else 'выкл'}", "remeve")],
         [B(f"🛒 Напоминать про закупы: {'вкл' if rem_on('shop_on') else 'выкл'}", "remshop")],
@@ -1265,6 +1377,7 @@ async def on_document(m: Message):
 
 # ---------- напоминания ----------
 async def remind_morning():
+    switched = maybe_rollover()          # понедельник — переходим на следующее меню
     w = active_plan()
     if not w:
         return
@@ -1272,6 +1385,8 @@ async def remind_morning():
     txt, kb = day_card(w, d, "🌅 Доброе утро! Сегодня")
     if not txt:
         return
+    if switched:
+        txt = f"🔄 Началась новая неделя — перешли на «{switched['label']}».\n\n" + txt
     for cid in store.all_chats():
         try:
             await notify(cid, "morning", txt, kb)
