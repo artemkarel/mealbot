@@ -126,8 +126,20 @@ def ui_key(chat_id):
     return f"ui:{chat_id}"
 
 
+async def clear_export(chat_id):
+    """Убрать присланный ранее список текстом (он мог быть из нескольких сообщений)."""
+    ids = store.get_setting(f"exp:{chat_id}")
+    if not ids:
+        return
+    store.del_setting(f"exp:{chat_id}")
+    for mid in ids.split(","):
+        if mid.strip():
+            await del_msg(chat_id, mid.strip())
+
+
 async def adopt_window(msg):
     """Сделать это сообщение единственным «окном приложения», старое убрать."""
+    await clear_export(msg.chat.id)
     prev = store.get_setting(ui_key(msg.chat.id))
     if prev and int(prev) != msg.message_id:
         await del_msg(msg.chat.id, prev)
@@ -136,6 +148,7 @@ async def adopt_window(msg):
 
 async def show(chat_id, text, kb=None):
     """Показать экран в одном и том же окне: правим сообщение, а не плодим новые."""
+    await clear_export(chat_id)
     mid = store.get_setting(ui_key(chat_id))
     if mid:
         try:
@@ -1245,18 +1258,15 @@ async def cb_text_list(c: CallbackQuery):
     if len(out) == 1:
         out.append("\n🎉 Всё куплено")
     else:
-        out.append(f"\n<i>Можно переслать этот список кому-то из семьи.</i>")
+        out.append("\n<i>Перешли список, если нужен — он исчезнет, когда вернёшься к кнопкам.</i>")
     await c.answer()
-    await adopt_window(c.message)
+    await adopt_window(c.message)          # заодно уберёт прошлый список
     chat = c.message.chat.id
-    prev = store.get_setting(f"exp:{chat}")
-    if prev:
-        await del_msg(chat, prev)
-    parts = chunks(out)
-    for part in parts[:-1]:
-        await bot.send_message(chat, part)
-    sent = await bot.send_message(chat, parts[-1])
-    store.set_setting(f"exp:{chat}", sent.message_id)
+    ids = []
+    for part in chunks(out):
+        sent = await bot.send_message(chat, part)
+        ids.append(str(sent.message_id))
+    store.set_setting(f"exp:{chat}", ",".join(ids))
 
 
 # ---------- свои пункты ----------
