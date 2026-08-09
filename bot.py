@@ -610,7 +610,7 @@ def menu_kb(uid=None):
     return KB(rows + [
         [B("🍽 Что сегодня", "today"), B("📅 Расписание", "schweeks")],
         [B("🛒 Закупки", "shopsrc"), B("📖 Рецепты", "recs")],
-        [B("🎲 Случайное", "gen"), B("⚙️ Настройки", "settings")],
+        [B("⚙️ Настройки", "settings")],
     ])
 
 
@@ -930,7 +930,8 @@ HELP_TOPICS = {
         "и незнакомого.", "",
         "Блюда так же идут парами по два дня, чтобы готовить один раз на два приёма.", "",
         "Не понравился вариант — «Другой вариант». Понравился — «Сохранить», и меню появится "
-        "в Расписании и Закупках наравне с остальными.",
+        "в Расписании и Закупках наравне с остальными.", "",
+        "<i>Кнопка «Собрать своё меню» — внизу раздела 📅 Расписание.</i>",
     ]),
     "supp": ("💊 Добавки", [
         "<b>Витамины и добавки</b>", "",
@@ -1047,8 +1048,9 @@ async def cb_schweeks(c: CallbackQuery):
     rows = [[B(f"{w['label']} · {w['dates']}".strip(" ·"), f"sw:{w['id']}")] for w in store.all_weeks()]
     gen = store.all_generated()
     if gen:
-        rows.append([B("— 🎲 Случайные меню", "noop")])
+        rows.append([B("— 🎲 Свои меню", "noop")])
         rows += [[B(g["label"], f"sw:{g['id']}")] for g in gen]
+    rows.append([B("🎲 Собрать своё меню", "gen")])
     rows.append([B("⌂ Меню", "menu")])
     await safe_edit(c.message, "Выбери меню:", KB(rows))
     await c.answer()
@@ -1640,7 +1642,7 @@ def draft_text(w):
 def draft_kb():
     return KB([[B("🔄 Другой вариант", "gen")],
                [B("💾 Сохранить меню", "gsave")],
-               [B("⌂ Меню", "menu")]])
+               [B("‹ Расписание", "schweeks"), B("⌂ Меню", "menu")]])
 
 
 @dp.callback_query(F.data == "gen")
