@@ -237,11 +237,13 @@ def day_card(w, d, head):
     prev = day_for_date(w, d - timedelta(days=1))
     same_as_yesterday = meals_equal(day, prev)
     lines = [f"{head} · {day['name']}, {d.strftime('%d.%m')}", f"Меню: {w['label']}", ""]
+    sb = supps_by_slot()
     for m in day["meals"]:
-        if not m["d"]:
+        if not m["d"] and m["t"] not in sb:
             continue
         lines.append(f"🍽 {m['t']}")
         lines += [f"   • {x}" for x in m["d"]]
+        lines += [f"   💊 {supp_text(sp)}" for sp in sb.get(m["t"], [])]
         lines.append("")
     if same_as_yesterday:
         lines.append("♻️ Сегодня то же, что вчера — готовить заново не нужно.")
@@ -401,6 +403,121 @@ class Edit(StatesGroup):
     new_name = State()
     new_text = State()
     extra_name = State()
+    supp_name = State()
+
+
+# ---------- биодобавки ----------
+def supp_text(sp):
+    return sp["name"] + (f" — {sp['dose']}" if sp["dose"] else "")
+
+
+def supps_by_slot():
+    out = {}
+    for sp in store.all_supps():
+        for sl in (sp["slots"] or "").split(","):
+            sl = sl.strip()
+            if sl:
+                out.setdefault(sl, []).append(sp)
+    return out
+
+
+def supps_screen():
+    supps = store.all_supps()
+    rows = [[B(f"💊 {sp['name']} · {sp['slots'] or 'без приёма'}"[:60], f"supp:{sp['sid']}")]
+            for sp in supps]
+    rows.append([B("➕ Добавить добавку", "sadd")])
+    rows.append([B("‹ Настройки", "settings"), B("⌂ Меню", "menu")])
+    txt = ("💊 Биодобавки\n\n"
+           "Показываются в меню дня рядом с приёмом пищи, к которому привязаны — "
+           "в «Что сегодня» и в утреннем напоминании.")
+    if not supps:
+        txt += "\n\nПока пусто."
+    return txt, KB(rows)
+
+
+@dp.callback_query(F.data == "supps")
+async def cb_supps(c: CallbackQuery):
+    txt, kb = supps_screen()
+    await safe_edit(c.message, txt, kb)
+    await c.answer()
+
+
+@dp.callback_query(F.data.startswith("supp:"))
+async def cb_supp_view(c: CallbackQuery):
+    sid = c.data.split(":", 1)[1]
+    sp = store.get_supp(sid)
+    if not sp:
+        return await c.answer("Не найдено", show_alert=True)
+    chosen = {s.strip() for s in (sp["slots"] or "").split(",") if s.strip()}
+    rows = [[B(("✅ " if s in chosen else "⬜ ") + s, f"sslot:{sid}:{i}")]
+            for i, s in enumerate(SLOTS)]
+    rows.append([B("🗑 Удалить", f"sdel:{sid}")])
+    rows.append([B("‹ Добавки", "supps"), B("⌂ Меню", "menu")])
+    await safe_edit(c.message, f"💊 {supp_text(sp)}\n\nК каким приёмам пищи привязать:", KB(rows))
+    await c.answer()
+
+
+@dp.callback_query(F.data.startswith("sslot:"))
+async def cb_supp_slot(c: CallbackQuery):
+    _, sid, i = c.data.split(":")
+    sp = store.get_supp(sid)
+    if not sp:
+        return await c.answer("Не найдено", show_alert=True)
+    slot = SLOTS[int(i)]
+    chosen = [s.strip() for s in (sp["slots"] or "").split(",") if s.strip()]
+    if slot in chosen:
+        chosen.remove(slot)
+    else:
+        chosen.append(slot)
+    chosen = [s for s in SLOTS if s in chosen]      # держим порядок приёмов
+    store.set_supp_slots(sid, ",".join(chosen))
+    c.data = f"supp:{sid}"
+    await cb_supp_view(c)
+
+
+@dp.callback_query(F.data.startswith("sdel:"))
+async def cb_supp_del(c: CallbackQuery):
+    store.del_supp(c.data.split(":", 1)[1])
+    await c.answer("Удалено")
+    txt, kb = supps_screen()
+    await safe_edit(c.message, txt, kb)
+
+
+@dp.callback_query(F.data == "sadd")
+async def cb_supp_add(c: CallbackQuery, state: FSMContext):
+    await state.set_state(Edit.supp_name)
+    await safe_edit(c.message,
+                    "➕ Пришли название и дозировку через тире, например:\n"
+                    "Омега-3 — 2 капсулы\n"
+                    "Магний — 1 таблетка\n\n"
+                    "Можно несколько сразу — каждая с новой строки.",
+                    KB([[B("✖︎ Отмена", "supps")]]))
+    await c.answer()
+
+
+@dp.message(Edit.supp_name)
+async def on_supp_name(m: Message, state: FSMContext):
+    await state.clear()
+    await del_msg(m.chat.id, m.message_id)
+    added = 0
+    for line in (m.text or "").split("\n"):
+        line = line.strip(" -•\t")
+        if not line:
+            continue
+        for sep in (" — ", " – ", " - "):
+            if sep in line:
+                name, dose = line.split(sep, 1)
+                break
+        else:
+            name, dose = line, ""
+        store.add_supp(name.strip()[:60], dose.strip()[:40], "Завтрак")
+        added += 1
+        if added >= 15:
+            break
+    txt, kb = supps_screen()
+    await show(m.chat.id,
+               f"✅ Добавил: {added}. Пока все — к завтраку.\n"
+               "Нажми на добавку, чтобы выбрать другие приёмы.\n\n" + txt, kb)
 
 
 # ---------- access control ----------
@@ -668,6 +785,7 @@ def settings_kb():
         [B(f"▶️ Текущее меню: {cur}"[:60], "actsel")],
         [B(("⏭ Дальше: " + (store.get_week(next_plan_id(w["id"]))or{}).get("label","—")
             if w and store.get_setting("auto_next", "1") == "1" else "⏭ Автопереход выключен")[:60], "nxtsel")],
+        [B(f"💊 Добавки: {len(store.all_supps())}", "supps")],
         [B(f"🌅 Утром «что сегодня»: {mt if rem_on('morning_on') else 'выкл'}", "remmorn")],
         [B(f"🌙 Вечером «что готовим завтра»: {'вкл' if rem_on('evening_on') else 'выкл'}", "remeve")],
         [B(f"🛒 Напоминать про закупы: {'вкл' if rem_on('shop_on') else 'выкл'}", "remshop")],
@@ -766,8 +884,9 @@ async def cb_sch_day(c: CallbackQuery):
     day = w["days"][int(di)]
     lines = [f"📅 {w['label']} · {day['name']}", ""]
     rec_btns, seen = [], set()
+    sb = supps_by_slot()
     for m in day["meals"]:
-        if not m["d"]:
+        if not m["d"] and m["t"] not in sb:
             continue
         lines.append(f"• {m['t']}:")
         for d in m["d"]:
@@ -778,6 +897,7 @@ async def cb_sch_day(c: CallbackQuery):
                 r = store.get_recipe(rid)
                 if r:
                     rec_btns.append([B(f"📖 {r['name']}", f"rv:{rid}")])
+        lines += [f"   💊 {supp_text(sp)}" for sp in sb.get(m["t"], [])]
         lines.append("")
     rows = rec_btns + [[B("‹ Дни", f"sw:{wid}"), B("⌂ Меню", "menu")]]
     await safe_edit(c.message, "\n".join(lines).strip(), KB(rows))

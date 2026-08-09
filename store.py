@@ -78,6 +78,9 @@ def init():
             CREATE TABLE IF NOT EXISTS extras(
                 eid INTEGER PRIMARY KEY AUTOINCREMENT,
                 wid TEXT, trip INTEGER, name TEXT);
+            CREATE TABLE IF NOT EXISTS supplements(
+                sid INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT, dose TEXT, slots TEXT);
             CREATE TABLE IF NOT EXISTS chats(chat_id INTEGER PRIMARY KEY);
             """
         )
@@ -166,6 +169,35 @@ def del_extra(wid, eid):
     with conn() as c:
         c.execute("DELETE FROM extras WHERE wid=? AND eid=?", (wid, int(eid)))
         c.execute("DELETE FROM checks WHERE item_id=?", (f"{wid}:x{eid}",))
+
+
+# ---- биодобавки ----
+def all_supps():
+    with conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT sid,name,dose,slots FROM supplements ORDER BY sid").fetchall()]
+
+
+def get_supp(sid):
+    with conn() as c:
+        r = c.execute("SELECT sid,name,dose,slots FROM supplements WHERE sid=?", (int(sid),)).fetchone()
+        return dict(r) if r else None
+
+
+def add_supp(name, dose, slots):
+    with conn() as c:
+        cur = c.execute("INSERT INTO supplements(name,dose,slots) VALUES(?,?,?)", (name, dose, slots))
+        return cur.lastrowid
+
+
+def set_supp_slots(sid, slots):
+    with conn() as c:
+        c.execute("UPDATE supplements SET slots=? WHERE sid=?", (slots, int(sid)))
+
+
+def del_supp(sid):
+    with conn() as c:
+        c.execute("DELETE FROM supplements WHERE sid=?", (int(sid),))
 
 
 # ---- weeks (built-in from plan.json + added from parsed files) ----
