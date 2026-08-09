@@ -8,7 +8,8 @@ from zoneinfo import ZoneInfo
 
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
-from aiogram.types import Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.types import (Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
+                           BotCommand, BotCommandScopeDefault, BotCommandScopeChat, ErrorEvent)
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -353,6 +354,69 @@ def is_admin(uid):
     return bool(ADMINS) and uid in ADMINS
 
 
+async def admin_only(m: Message):
+    """Для не-админа команды как будто не существует: молча убираем сообщение."""
+    if is_admin(m.from_user.id):
+        return True
+    await del_msg(m.chat.id, m.message_id)
+    return False
+
+
+async def notify_admin(text):
+    """Техническое сообщение — только владельцу."""
+    for uid in ADMINS:
+        try:
+            await bot.send_message(uid, text[:3500])
+        except Exception:
+            logging.warning("не смог написать админу %s", uid)
+
+
+PUBLIC_CMDS = [
+    BotCommand(command="start", description="Открыть меню"),
+    BotCommand(command="today", description="Что сегодня едим"),
+    BotCommand(command="tomorrow", description="Что завтра"),
+    BotCommand(command="myid", description="Мой Telegram ID"),
+]
+ADMIN_CMDS = PUBLIC_CMDS + [
+    BotCommand(command="status", description="Состояние бота"),
+    BotCommand(command="version", description="Версия кода"),
+    BotCommand(command="update", description="Обновить с GitHub"),
+    BotCommand(command="restart", description="Перезапустить бота"),
+]
+
+
+async def setup_commands():
+    """Обычные видят короткий список команд, владелец — полный."""
+    try:
+        await bot.set_my_commands(PUBLIC_CMDS, scope=BotCommandScopeDefault())
+    except Exception:
+        logging.warning("не смог задать список команд")
+    for uid in ADMINS:
+        try:
+            await bot.set_my_commands(ADMIN_CMDS, scope=BotCommandScopeChat(chat_id=uid))
+        except Exception:
+            logging.warning("не смог задать команды владельца %s", uid)
+
+
+@dp.errors()
+async def on_error(event: ErrorEvent):
+    """Любая ошибка: пользователю — нейтрально, владельцу — подробности."""
+    logging.exception("ошибка обработчика", exc_info=event.exception)
+    upd = event.update
+    chat_id = None
+    if getattr(upd, "message", None):
+        chat_id = upd.message.chat.id
+    elif getattr(upd, "callback_query", None) and upd.callback_query.message:
+        chat_id = upd.callback_query.message.chat.id
+    if chat_id and not is_admin(chat_id):
+        try:
+            await bot.send_message(chat_id, "Что-то пошло не так. Я уже сообщил владельцу — скоро починим.")
+        except Exception:
+            pass
+    await notify_admin(f"⚠️ Ошибка в боте\n{type(event.exception).__name__}: {event.exception}")
+    return True
+
+
 def version_line():
     try:
         r = subprocess.run(["git", "-C", BASE_DIR, "log", "-1", "--pretty=%h · %s · %cd",
@@ -365,7 +429,8 @@ def version_line():
 
 @dp.message(Command("version"))
 async def cmd_version(m: Message):
-    await del_msg(m.chat.id, m.message_id)
+    if not await admin_only(m):
+        return
     await show(m.chat.id, f"🏷 Версия на сервере:\n{version_line()}", KB([[B("⌂ Меню", "menu")]]))
 
 
@@ -417,10 +482,9 @@ async def cmd_status(m: Message):
 
 @dp.message(Command("update"))
 async def cmd_update(m: Message):
+    if not await admin_only(m):
+        return
     await del_msg(m.chat.id, m.message_id)
-    if not is_admin(m.from_user.id):
-        return await show(m.chat.id, "Команда доступна только владельцу бота (задай ADMIN_IDS в .env).",
-                          KB([[B("⌂ Меню", "menu")]]))
     await show(m.chat.id, "⏳ Скачиваю обновление и проверяю код…")
     try:
         r = await asyncio.to_thread(
@@ -450,9 +514,9 @@ async def cmd_update(m: Message):
 
 @dp.message(Command("restart"))
 async def cmd_restart(m: Message):
+    if not await admin_only(m):
+        return
     await del_msg(m.chat.id, m.message_id)
-    if not is_admin(m.from_user.id):
-        return await show(m.chat.id, "Команда доступна только владельцу бота.", KB([[B("⌂ Меню", "menu")]]))
     try:
         with open(UPDATE_FLAG, "w", encoding="utf-8") as f:
             f.write(str(m.chat.id))
@@ -1177,6 +1241,8 @@ async def cb_generate_delete(c: CallbackQuery):
 # ---------- обновление плана: присылаем готовый plan.json ----------
 @dp.message(F.document)
 async def on_document(m: Message):
+    if not await admin_only(m):
+        return
     fn = (m.document.file_name or "").lower()
     await del_msg(m.chat.id, m.message_id)
     if not fn.endswith(".json"):
@@ -1313,6 +1379,7 @@ async def main():
     sched = AsyncIOScheduler(timezone=TZ)
     sched.start()
     reschedule()
+    await setup_commands()
     asyncio.create_task(healthcheck())
     logging.info("Bot started, TZ=%s, jobs=%s", TZ, [j.id for j in sched.get_jobs()])
     await dp.start_polling(bot)
