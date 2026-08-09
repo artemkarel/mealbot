@@ -75,6 +75,9 @@ def init():
             CREATE TABLE IF NOT EXISTS weeks(wid TEXT PRIMARY KEY, ord INTEGER, data TEXT);
             CREATE TABLE IF NOT EXISTS genweeks(gid TEXT PRIMARY KEY, ord INTEGER, data TEXT);
             CREATE TABLE IF NOT EXISTS picks(dish TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS extras(
+                eid INTEGER PRIMARY KEY AUTOINCREMENT,
+                wid TEXT, trip INTEGER, name TEXT);
             CREATE TABLE IF NOT EXISTS chats(chat_id INTEGER PRIMARY KEY);
             """
         )
@@ -137,6 +140,32 @@ def checked_set(prefix):
 def reset_week(wid):
     with conn() as c:
         c.execute("DELETE FROM checks WHERE item_id LIKE ?", (wid + ":%",))
+
+
+def uncheck_many(ids):
+    if not ids:
+        return
+    with conn() as c:
+        c.executemany("DELETE FROM checks WHERE item_id=?", [(i,) for i in ids])
+
+
+# ---- свои пункты списка ----
+def all_extras(wid):
+    with conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT eid,trip,name FROM extras WHERE wid=? ORDER BY eid", (wid,)).fetchall()]
+
+
+def add_extra(wid, trip, name):
+    with conn() as c:
+        cur = c.execute("INSERT INTO extras(wid,trip,name) VALUES(?,?,?)", (wid, int(trip), name))
+        return cur.lastrowid
+
+
+def del_extra(wid, eid):
+    with conn() as c:
+        c.execute("DELETE FROM extras WHERE wid=? AND eid=?", (wid, int(eid)))
+        c.execute("DELETE FROM checks WHERE item_id=?", (f"{wid}:x{eid}",))
 
 
 # ---- weeks (built-in from plan.json + added from parsed files) ----
