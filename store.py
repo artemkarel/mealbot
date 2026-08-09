@@ -71,6 +71,8 @@ def init():
             """
             CREATE TABLE IF NOT EXISTS kv(k TEXT PRIMARY KEY, v TEXT);
             CREATE TABLE IF NOT EXISTS checks(item_id TEXT PRIMARY KEY);
+            CREATE TABLE IF NOT EXISTS uchecks(
+                uid INTEGER, item_id TEXT, PRIMARY KEY(uid, item_id));
             CREATE TABLE IF NOT EXISTS recipes(rid TEXT PRIMARY KEY, data TEXT);
             CREATE TABLE IF NOT EXISTS weeks(wid TEXT PRIMARY KEY, ord INTEGER, data TEXT);
             CREATE TABLE IF NOT EXISTS genweeks(gid TEXT PRIMARY KEY, ord INTEGER, data TEXT);
@@ -85,9 +87,10 @@ def init():
             CREATE TABLE IF NOT EXISTS chats(chat_id INTEGER PRIMARY KEY);
             """
         )
-        cols = [r[1] for r in c.execute("PRAGMA table_info(supplements)").fetchall()]
-        if "uid" not in cols:                       # база из прошлой версии
-            c.execute("ALTER TABLE supplements ADD COLUMN uid INTEGER DEFAULT 0")
+        for tbl in ("supplements", "extras"):
+            cols = [r[1] for r in c.execute(f"PRAGMA table_info({tbl})").fetchall()]
+            if "uid" not in cols:                   # база из прошлой версии
+                c.execute(f"ALTER TABLE {tbl} ADD COLUMN uid INTEGER DEFAULT 0")
 
 
 # ---- settings (kv) ----
@@ -130,76 +133,82 @@ def migrate_personal(uid):
         v = get_setting(k)
         if v is not None and get_user_setting(uid, k) is None:
             set_user_setting(uid, k, v)
+    v = get_setting("people")
+    if v is not None and get_user_setting(uid, "people") is None:
+        set_user_setting(uid, "people", v)
     with conn() as c:
         c.execute("UPDATE supplements SET uid=? WHERE uid IS NULL OR uid=0", (int(uid),))
+        c.execute("UPDATE extras SET uid=? WHERE uid IS NULL OR uid=0", (int(uid),))
+        c.execute("INSERT OR IGNORE INTO uchecks(uid,item_id) SELECT ?, item_id FROM checks",
+                  (int(uid),))
     set_setting("migrated_personal", "1")
 
 
 # ---- people ----
-def get_people():
-    with conn() as c:
-        r = c.execute("SELECT v FROM kv WHERE k='people'").fetchone()
-        return int(r["v"]) if r else 1
+def get_people(uid):
+    v = get_user_setting(uid, "people")
+    return int(v) if v else 1
 
 
-def set_people(n):
-    n = max(1, min(12, int(n)))
-    with conn() as c:
-        c.execute(
-            "INSERT INTO kv(k,v) VALUES('people',?) ON CONFLICT(k) DO UPDATE SET v=excluded.v",
-            (str(n),),
-        )
+def set_people(uid, n):
+    set_user_setting(uid, "people", max(1, min(12, int(n))))
 
 
 # ---- checkmarks (shared) ----
-def is_checked(item_id):
+def is_checked(uid, item_id):
     with conn() as c:
-        return c.execute("SELECT 1 FROM checks WHERE item_id=?", (item_id,)).fetchone() is not None
+        return c.execute("SELECT 1 FROM uchecks WHERE uid=? AND item_id=?",
+                         (int(uid), item_id)).fetchone() is not None
 
 
-def toggle_check(item_id):
+def toggle_check(uid, item_id):
     with conn() as c:
-        if c.execute("SELECT 1 FROM checks WHERE item_id=?", (item_id,)).fetchone():
-            c.execute("DELETE FROM checks WHERE item_id=?", (item_id,))
+        if c.execute("SELECT 1 FROM uchecks WHERE uid=? AND item_id=?",
+                     (int(uid), item_id)).fetchone():
+            c.execute("DELETE FROM uchecks WHERE uid=? AND item_id=?", (int(uid), item_id))
         else:
-            c.execute("INSERT INTO checks(item_id) VALUES(?)", (item_id,))
+            c.execute("INSERT INTO uchecks(uid,item_id) VALUES(?,?)", (int(uid), item_id))
 
 
-def checked_set(prefix):
+def checked_set(uid, prefix):
     with conn() as c:
-        rows = c.execute("SELECT item_id FROM checks WHERE item_id LIKE ?", (prefix + "%",)).fetchall()
+        rows = c.execute("SELECT item_id FROM uchecks WHERE uid=? AND item_id LIKE ?",
+                         (int(uid), prefix + "%")).fetchall()
         return {r["item_id"] for r in rows}
 
 
-def reset_week(wid):
+def reset_week(uid, wid):
     with conn() as c:
-        c.execute("DELETE FROM checks WHERE item_id LIKE ?", (wid + ":%",))
+        c.execute("DELETE FROM uchecks WHERE uid=? AND item_id LIKE ?", (int(uid), wid + ":%"))
 
 
-def uncheck_many(ids):
+def uncheck_many(uid, ids):
     if not ids:
         return
     with conn() as c:
-        c.executemany("DELETE FROM checks WHERE item_id=?", [(i,) for i in ids])
+        c.executemany("DELETE FROM uchecks WHERE uid=? AND item_id=?",
+                      [(int(uid), i) for i in ids])
 
 
 # ---- свои пункты списка ----
-def all_extras(wid):
+def all_extras(uid, wid):
     with conn() as c:
         return [dict(r) for r in c.execute(
-            "SELECT eid,trip,name FROM extras WHERE wid=? ORDER BY eid", (wid,)).fetchall()]
+            "SELECT eid,trip,name FROM extras WHERE uid=? AND wid=? ORDER BY eid",
+            (int(uid), wid)).fetchall()]
 
 
-def add_extra(wid, trip, name):
+def add_extra(uid, wid, trip, name):
     with conn() as c:
-        cur = c.execute("INSERT INTO extras(wid,trip,name) VALUES(?,?,?)", (wid, int(trip), name))
+        cur = c.execute("INSERT INTO extras(uid,wid,trip,name) VALUES(?,?,?,?)",
+                        (int(uid), wid, int(trip), name))
         return cur.lastrowid
 
 
-def del_extra(wid, eid):
+def del_extra(uid, wid, eid):
     with conn() as c:
-        c.execute("DELETE FROM extras WHERE wid=? AND eid=?", (wid, int(eid)))
-        c.execute("DELETE FROM checks WHERE item_id=?", (f"{wid}:x{eid}",))
+        c.execute("DELETE FROM extras WHERE uid=? AND wid=? AND eid=?", (int(uid), wid, int(eid)))
+        c.execute("DELETE FROM uchecks WHERE uid=? AND item_id=?", (int(uid), f"{wid}:x{eid}"))
 
 
 # ---- биодобавки ----

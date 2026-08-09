@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
-"""Телеграм-бот плана питания: расписание, закупки с галочками (общие для семьи),
-счётчик людей, рецепты с редактированием, обновление плана файлом plan.json,
-выбор блюд -> список покупок, напоминания. Без внешних ИИ-сервисов."""
+"""Телеграм-бот плана питания. У каждого своё: меню, закупки с галочками,
+число едоков, биодобавки и напоминания. Рецепты и планы — общие,
+обновляются файлом plan.json. Без внешних ИИ-сервисов."""
 import os, io, math, time, random, asyncio, logging, subprocess
 from html import escape as esc
 from datetime import datetime, date, timedelta
@@ -376,7 +376,7 @@ async def cb_active_select(c: CallbackQuery):
         rows.append([B("✖︎ Не питаться по плану", "actoff")])
     rows.append([B("‹ Настройки", "settings"), B("⌂ Меню", "menu")])
     txt = ("По какому меню сейчас питаемся?\n"
-           "<i>Выбор личный: у каждого в семье своё меню и свои напоминания.</i>\n\n")
+           "<i>Выбор личный — у других он не изменится.</i>\n\n")
     txt += ("🔄 В понедельник бот сам перейдёт на следующее меню."
             if auto else "🔄 Автопереключение выключено — меняешь вручную.")
     await safe_edit(c.message, txt, KB(rows))
@@ -633,10 +633,10 @@ def menu_text(uid):
 
 
 INTRO = (
-    "🍲 <b>План питания</b>\n" + "\n"
-    "Меню на каждый день и список покупок — общий на семью: отметишь продукт, "
-    "и это увидят остальные.\n\n"
-    "Меню, добавки и напоминания у каждого свои.\n\n"
+    "🍲 <b>План питания</b>\n\n"
+    "Меню на каждый день, список покупок с галочками и рецепты.\n\n"
+    "Всё личное: меню, закупки, добавки и напоминания у каждого свои — "
+    "другие их не видят.\n\n"
     "Утром в 7:30 пришлю, что есть сегодня.\n"
 )
 
@@ -875,7 +875,7 @@ def rem_on(uid, key, default="1"):
 
 
 def settings_kb(uid):
-    p = store.get_people()
+    p = store.get_people(uid)
     w = active_plan(uid)
     cur = w["label"] if w else "не выбрано"
     mt = store.get_user_setting(uid, "morning_time", MORNING_DEFAULT)
@@ -894,9 +894,9 @@ def settings_kb(uid):
     return KB(rows)
 
 
-SETTINGS_TEXT = ("⚙️ <b>Настройки</b>\n" + "\n"
-                 "<i>Меню, добавки и напоминания — личные, у каждого свои.\n"
-                 "Закупки и число едоков — общие на семью.</i>\n\n"
+SETTINGS_TEXT = ("⚙️ <b>Настройки</b>\n\n"
+                 "<i>Все настройки личные: меню, закупки, добавки и напоминания "
+                 "у каждого свои.</i>\n\n"
                  f"🕒 Часовой пояс: <code>{TZ}</code>")
 
 
@@ -908,7 +908,8 @@ async def cb_settings(c: CallbackQuery):
 
 @dp.callback_query(F.data.in_({"p:+", "p:-"}))
 async def cb_people(c: CallbackQuery):
-    store.set_people(store.get_people() + (1 if c.data.endswith("+") else -1))
+    uid = c.from_user.id
+    store.set_people(uid, store.get_people(uid) + (1 if c.data.endswith("+") else -1))
     if (c.message.text or "").startswith("⚙️ Настройки"):
         await safe_edit(c.message, SETTINGS_TEXT, settings_kb(c.from_user.id))
     else:
@@ -1054,7 +1055,7 @@ async def cb_plan_screen(c: CallbackQuery):
     if not w:
         return await c.answer("Меню не найдено", show_alert=True)
     shop = w.get("shop", [])
-    checks = store.checked_set(wid + ":")
+    checks = store.checked_set(c.from_user.id, wid + ":")
     stores = sorted({store_of(it[2], it[0]) for it in shop},
                     key=lambda s: STORE_ORDER.index(s) if s in STORE_ORDER else 99)
     lines = [f"📋 <b>{esc(w['label'])}</b>", f"<i>{esc(w.get('dates',''))}</i>".strip(), ""]
@@ -1084,7 +1085,7 @@ _hide_done = {}     # скрывать купленное
 _last_view = {}     # (wid, trip) — куда возвращаться после нажатий
 
 
-def shop_items(wid):
+def shop_items(uid, wid):
     """Все позиции меню + свои пункты, в одном виде."""
     w = store.get_week(wid)
     if not w:
@@ -1094,7 +1095,7 @@ def shop_items(wid):
         items.append({"iid": f"{wid}:{i}", "cat": it[0], "name": it[1], "badge": it[2],
                       "unit": it[3], "qty": it[4], "note": it[5],
                       "trip": it[6] if len(it) > 6 else 1, "eid": None})
-    for e in store.all_extras(wid):
+    for e in store.all_extras(uid, wid):
         items.append({"iid": f"{wid}:x{e['eid']}", "cat": "Своё", "name": e["name"], "badge": "",
                       "unit": "", "qty": None, "note": "", "trip": e["trip"], "eid": e["eid"]})
     return w, items
@@ -1122,11 +1123,12 @@ def shop_button(mark, name, q):
 
 # ---------- экран выбора захода ----------
 async def open_shop(c: CallbackQuery, wid):
-    w, items = shop_items(wid)
+    uid = c.from_user.id
+    w, items = shop_items(uid, wid)
     if not w:
         return await c.answer("Меню не найдено", show_alert=True)
-    checks = store.checked_set(wid + ":")
-    people = store.get_people()
+    checks = store.checked_set(uid, wid + ":")
+    people = store.get_people(uid)
     rows = []
     for trip in (1, 2, "p"):
         sel = [it for it in items if in_view(it, trip)]
@@ -1155,9 +1157,9 @@ async def cb_shop(c: CallbackQuery):
 
 # ---------- список одного захода ----------
 def render_trip(wid, trip, uid):
-    w, items = shop_items(wid)
-    people = store.get_people()
-    checks = store.checked_set(wid + ":")
+    w, items = shop_items(uid, wid)
+    people = store.get_people(uid)
+    checks = store.checked_set(uid, wid + ":")
     by_store = _by_store.get(uid, False)
     hide = _hide_done.get(uid, False)
     sel = [it for it in items if in_view(it, trip)]
@@ -1232,7 +1234,7 @@ async def render_shop_here(c: CallbackQuery):
 
 @dp.callback_query(F.data.startswith("t:"))
 async def cb_toggle(c: CallbackQuery):
-    store.toggle_check(c.data.split(":", 1)[1])
+    store.toggle_check(c.from_user.id, c.data.split(":", 1)[1])
     await refresh_view(c)
     await c.answer()
 
@@ -1254,11 +1256,12 @@ async def cb_hide(c: CallbackQuery):
 @dp.callback_query(F.data.startswith("rs:"))
 async def cb_reset(c: CallbackQuery):
     _, wid, t = c.data.split(":")
+    uid = c.from_user.id
     if t == "all":
-        store.reset_week(wid)
+        store.reset_week(uid, wid)
     else:
-        _, items = shop_items(wid)
-        store.uncheck_many([it["iid"] for it in items if in_view(it, parse_trip(t))])
+        _, items = shop_items(uid, wid)
+        store.uncheck_many(uid, [it["iid"] for it in items if in_view(it, parse_trip(t))])
     await refresh_view(c)
     await c.answer("Отметки сброшены")
 
@@ -1267,9 +1270,10 @@ async def cb_reset(c: CallbackQuery):
 @dp.callback_query(F.data.startswith("txt:"))
 async def cb_text_list(c: CallbackQuery):
     _, wid, t = c.data.split(":")
-    w, items = shop_items(wid)
-    people = store.get_people()
-    checks = store.checked_set(wid + ":")
+    uid = c.from_user.id
+    w, items = shop_items(uid, wid)
+    people = store.get_people(uid)
+    checks = store.checked_set(uid, wid + ":")
     trips = [1, 2] if t == "all" else [parse_trip(t)]
     out = [f"🛒 <b>{esc(w['label'])}</b> · на {people} чел."]
     for trip in trips:
@@ -1317,7 +1321,7 @@ async def on_extra_name(m: Message, state: FSMContext):
     trip = 1 if t == "p" else int(t)
     names = [x.strip(" -•\t") for x in (m.text or "").split("\n") if x.strip(" -•\t")]
     for n in names[:20]:
-        store.add_extra(wid, trip, n[:80])
+        store.add_extra(m.from_user.id, wid, trip, n[:80])
     await state.clear()
     await del_msg(m.chat.id, m.message_id)
     trip_v = parse_trip(t)
@@ -1326,7 +1330,7 @@ async def on_extra_name(m: Message, state: FSMContext):
 
 
 async def open_extras(c: CallbackQuery, wid, t):
-    _, items = shop_items(wid)
+    _, items = shop_items(c.from_user.id, wid)
     mine = [it for it in items if it["eid"] and in_view(it, parse_trip(t))]
     rows = [[B(f"🗑 {it['name']}"[:60], f"xdel:{wid}:{t}:{it['eid']}")] for it in mine]
     rows.append([B("‹ Назад", f"st:{wid}:{t}")])
@@ -1343,9 +1347,9 @@ async def cb_extras(c: CallbackQuery):
 @dp.callback_query(F.data.startswith("xdel:"))
 async def cb_extra_del(c: CallbackQuery):
     _, wid, t, eid = c.data.split(":")
-    store.del_extra(wid, eid)
+    store.del_extra(c.from_user.id, wid, eid)
     await c.answer("Удалено")
-    _, items = shop_items(wid)
+    _, items = shop_items(c.from_user.id, wid)
     if any(it["eid"] and in_view(it, parse_trip(t)) for it in items):
         await open_extras(c, wid, t)
     else:
@@ -1664,7 +1668,7 @@ async def remind_shop(uid, kind):
     if w:
         trip = 1 if kind == "t1" else 2
         shop = w.get("shop", [])
-        checks = store.checked_set(w["id"] + ":")
+        checks = store.checked_set(uid, w["id"] + ":")
         shop_trip = [i for i, it in enumerate(shop) if (it[6] if len(it) > 6 else 1) == trip]
         left = [i for i in shop_trip if f"{w['id']}:{i}" not in checks]
         if not left:
