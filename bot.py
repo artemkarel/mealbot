@@ -21,7 +21,20 @@ logging.basicConfig(level=logging.INFO)
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 TZ = os.environ.get("TZ", "Europe/Samara")   # Ижевск, UTC+4
-ALLOWED = {int(x) for x in os.environ.get("ALLOWED_IDS", "").replace(" ", "").split(",") if x}
+def id_set(name):
+    """Список Telegram ID из переменной окружения. Мусор пропускаем, а не падаем."""
+    out = set()
+    for part in os.environ.get(name, "").replace(" ", "").split(","):
+        if not part:
+            continue
+        try:
+            out.add(int(part))
+        except ValueError:
+            logging.warning("%s: значение %r — не число, пропускаю", name, part)
+    return out
+
+
+ALLOWED = id_set("ALLOWED_IDS")
 
 bot = Bot(BOT_TOKEN)
 dp = Dispatcher(storage=MemoryStorage())
@@ -276,7 +289,7 @@ async def myid(m: Message):
 # ---------- обновление кода с GitHub ----------
 BASE_DIR = os.path.dirname(os.path.abspath(__file__))
 UPDATE_FLAG = os.path.join(BASE_DIR, ".update_notify")
-ADMINS = {int(x) for x in os.environ.get("ADMIN_IDS", "").replace(" ", "").split(",") if x} or ALLOWED
+ADMINS = id_set("ADMIN_IDS") or ALLOWED
 
 
 def is_admin(uid):
