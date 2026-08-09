@@ -199,9 +199,9 @@ def plan_order():
     return [w["id"] for w in store.all_weeks()] + [g["id"] for g in store.all_generated()]
 
 
-def next_plan_id(cur):
+def next_plan_id(uid, cur):
     """Какое меню будет следующим: выбранное вручную или следующее по порядку."""
-    chosen = store.get_setting("next_plan")
+    chosen = store.get_user_setting(uid, "next_plan")
     if chosen and chosen != cur and store.get_week(chosen):
         return chosen
     ids = plan_order()
@@ -216,13 +216,13 @@ def week_monday(d):
     return d - timedelta(days=d.weekday())
 
 
-def maybe_rollover():
+def maybe_rollover(uid):
     """Началась новая календарная неделя — переходим на следующее меню.
     Возвращает новое меню, если переключились."""
-    if store.get_setting("auto_next", "1") != "1":
+    if store.get_user_setting(uid, "auto_next", "1") != "1":
         return None
-    wid = store.get_setting("active_plan")
-    started = store.get_setting("active_started")
+    wid = store.get_user_setting(uid, "active_plan")
+    started = store.get_user_setting(uid, "active_started")
     if not wid or not started:
         return None
     try:
@@ -232,23 +232,23 @@ def maybe_rollover():
     today = tznow().date()
     if week_monday(today) <= week_monday(s):
         return None                      # неделя ещё не закончилась
-    nxt = next_plan_id(wid)
+    nxt = next_plan_id(uid, wid)
     if not nxt or nxt == wid:
         return None
-    store.set_setting("active_plan", nxt)
-    store.set_setting("active_started", today.isoformat())
-    store.del_setting("next_plan")       # разовый выбор использован
-    logging.info("Новая неделя: перешли с %s на %s", wid, nxt)
+    store.set_user_setting(uid, "active_plan", nxt)
+    store.set_user_setting(uid, "active_started", today.isoformat())
+    store.del_user_setting(uid, "next_plan")     # разовый выбор использован
+    logging.info("Новая неделя у %s: перешли с %s на %s", uid, wid, nxt)
     return store.get_week(nxt)
 
 
-def active_plan():
-    maybe_rollover()
-    wid = store.get_setting("active_plan")
+def active_plan(uid):
+    maybe_rollover(uid)
+    wid = store.get_user_setting(uid, "active_plan")
     return store.get_week(wid) if wid else None
 
 
-def day_for_date(w, d):
+def day_for_date(w, d, uid=None):
     """Какой день плана соответствует дате. Сначала по названию дня недели,
     иначе — отсчётом от даты включения меню."""
     days = w.get("days", [])
@@ -258,7 +258,7 @@ def day_for_date(w, d):
     for day in days:
         if day.get("name", "").strip().lower() == want:
             return day
-    started = store.get_setting("active_started")
+    started = store.get_user_setting(uid, "active_started") if uid else None
     if started:
         try:
             s = date.fromisoformat(started)
@@ -287,16 +287,16 @@ def recipes_in(day):
     return out
 
 
-def day_card(w, d, head):
+def day_card(w, d, head, uid):
     """Текст с меню на дату d + кнопки рецептов."""
-    day = day_for_date(w, d)
+    day = day_for_date(w, d, uid)
     if not day:
         return None, None
-    prev = day_for_date(w, d - timedelta(days=1))
+    prev = day_for_date(w, d - timedelta(days=1), uid)
     same_as_yesterday = meals_equal(day, prev)
     lines = [f"<b>{esc(head)}</b>",
              f"<i>{esc(day['name'])}, {d:%d.%m} · {esc(w['label'])}</i>", HR, ""]
-    sb = supps_by_slot()
+    sb = supps_by_slot(uid)
     for m in day["meals"]:
         if not m["d"] and m["t"] not in sb:
             continue
@@ -307,7 +307,7 @@ def day_card(w, d, head):
     if same_as_yesterday:
         lines.append("♻️ <i>Сегодня то же, что вчера — готовить заново не нужно.</i>")
     else:
-        nxt = day_for_date(w, d + timedelta(days=1))
+        nxt = day_for_date(w, d + timedelta(days=1), uid)
         if meals_equal(day, nxt):
             lines.append("🍳 <b>Готовим сегодня</b> — сразу на два дня, завтра то же самое.")
         else:
@@ -318,11 +318,12 @@ def day_card(w, d, head):
     return "\n".join(lines).strip(), KB(rows)
 
 
-async def send_day(chat_id, head, shift=0):
-    w = active_plan()
+async def send_day(chat_id, head, shift=0, uid=None):
+    uid = uid or chat_id
+    w = active_plan(uid)
     if not w:
         return False
-    txt, kb = day_card(w, tznow().date() + timedelta(days=shift), head)
+    txt, kb = day_card(w, tznow().date() + timedelta(days=shift), head, uid)
     if not txt:
         return False
     await show(chat_id, txt, kb)
@@ -332,14 +333,14 @@ async def send_day(chat_id, head, shift=0):
 @dp.message(Command("today"))
 async def cmd_today(m: Message):
     await del_msg(m.chat.id, m.message_id)
-    if not await send_day(m.chat.id, "🍽 Сегодня"):
+    if not await send_day(m.chat.id, "🍽 Сегодня", 0, m.from_user.id):
         await show(m.chat.id, "Сначала выбери текущее меню.", KB([[B("▶️ Выбрать меню", "actsel")]]))
 
 
 @dp.message(Command("tomorrow"))
 async def cmd_tomorrow(m: Message):
     await del_msg(m.chat.id, m.message_id)
-    if not await send_day(m.chat.id, "🌙 Завтра", 1):
+    if not await send_day(m.chat.id, "🌙 Завтра", 1, m.from_user.id):
         await show(m.chat.id, "Сначала выбери текущее меню.", KB([[B("▶️ Выбрать меню", "actsel")]]))
 
 
@@ -348,7 +349,7 @@ async def cb_today(c: CallbackQuery):
     await c.answer()
     head, shift = ("🍽 Сегодня", 0) if c.data == "today" else ("🌙 Завтра", 1)
     await adopt_window(c.message)
-    if not await send_day(c.message.chat.id, head, shift):
+    if not await send_day(c.message.chat.id, head, shift, c.from_user.id):
         await show(c.message.chat.id, "Сначала выбери текущее меню.",
                    KB([[B("▶️ Выбрать меню", "actsel")]]))
 
@@ -356,8 +357,9 @@ async def cb_today(c: CallbackQuery):
 # ---------- выбор текущего меню ----------
 @dp.callback_query(F.data == "actsel")
 async def cb_active_select(c: CallbackQuery):
-    cur = store.get_setting("active_plan")
-    auto = store.get_setting("auto_next", "1") == "1"
+    uid = c.from_user.id
+    cur = store.get_user_setting(uid, "active_plan")
+    auto = store.get_user_setting(uid, "auto_next", "1") == "1"
     rows = [[B("— 📅 Из расписания", "noop")]]
     for w in store.all_weeks():
         mark = "✅ " if w["id"] == cur else ""
@@ -370,12 +372,12 @@ async def cb_active_select(c: CallbackQuery):
             rows.append([B(f"{mark}{g['label']}", f"act:{g['id']}")])
     rows.append([B(f"🔄 Менять автоматически: {'вкл' if auto else 'выкл'}", "autonext")])
     if cur:
-        nxt = store.get_week(next_plan_id(cur))
+        nxt = store.get_week(next_plan_id(uid, cur))
         rows.append([B(f"⏭ Следующее: {nxt['label'] if nxt else '—'}"[:60], "nxtsel")])
         rows.append([B("✖︎ Не питаться по плану", "actoff")])
     rows.append([B("‹ Настройки", "settings"), B("⌂ Меню", "menu")])
     txt = ("По какому меню сейчас питаемся?\n"
-           "От него зависят утренние напоминания «что сегодня».\n\n")
+           "<i>Выбор личный: у каждого в семье своё меню и свои напоминания.</i>\n\n")
     txt += ("🔄 В понедельник бот сам перейдёт на следующее меню."
             if auto else "🔄 Автопереключение выключено — меняешь вручную.")
     await safe_edit(c.message, txt, KB(rows))
@@ -384,16 +386,17 @@ async def cb_active_select(c: CallbackQuery):
 
 @dp.callback_query(F.data == "autonext")
 async def cb_auto_next(c: CallbackQuery):
-    now = store.get_setting("auto_next", "1") == "1"
-    store.set_setting("auto_next", "0" if now else "1")
+    now = store.get_user_setting(c.from_user.id, "auto_next", "1") == "1"
+    store.set_user_setting(c.from_user.id, "auto_next", "0" if now else "1")
     await c.answer("Автопереключение " + ("выключено" if now else "включено"))
     await cb_active_select(c)
 
 
 @dp.callback_query(F.data == "nxtsel")
 async def cb_next_select(c: CallbackQuery):
-    cur = store.get_setting("active_plan")
-    chosen = store.get_setting("next_plan")
+    uid = c.from_user.id
+    cur = store.get_user_setting(uid, "active_plan")
+    chosen = store.get_user_setting(uid, "next_plan")
     rows = [[B(("✅ " if not chosen else "") + "По порядку (следующее в списке)", "nxt:auto")]]
     for w in store.all_weeks() + store.all_generated():
         if w["id"] == cur:
@@ -412,10 +415,10 @@ async def cb_next_select(c: CallbackQuery):
 async def cb_next_set(c: CallbackQuery):
     v = c.data.split(":", 1)[1]
     if v == "auto":
-        store.del_setting("next_plan")
+        store.del_user_setting(c.from_user.id, "next_plan")
         await c.answer("Буду брать следующее по порядку")
     else:
-        store.set_setting("next_plan", v)
+        store.set_user_setting(c.from_user.id, "next_plan", v)
         w = store.get_week(v)
         await c.answer(f"Следующее: {w['label'] if w else v}")
     await cb_next_select(c)
@@ -423,16 +426,17 @@ async def cb_next_set(c: CallbackQuery):
 
 @dp.callback_query(F.data == "nxtnow")
 async def cb_next_now(c: CallbackQuery):
-    cur = store.get_setting("active_plan")
-    nxt = next_plan_id(cur)
+    uid = c.from_user.id
+    cur = store.get_user_setting(uid, "active_plan")
+    nxt = next_plan_id(uid, cur)
     w = store.get_week(nxt) if nxt else None
     if not w:
         return await c.answer("Некуда переключаться", show_alert=True)
-    store.set_setting("active_plan", nxt)
-    store.set_setting("active_started", tznow().date().isoformat())
-    store.del_setting("next_plan")
+    store.set_user_setting(uid, "active_plan", nxt)
+    store.set_user_setting(uid, "active_started", tznow().date().isoformat())
+    store.del_user_setting(uid, "next_plan")
     await c.answer("Переключил")
-    txt, kb = day_card(w, tznow().date(), "🍽 Сегодня")
+    txt, kb = day_card(w, tznow().date(), "🍽 Сегодня", uid)
     await safe_edit(c.message, f"✅ Теперь питаемся по: {w['label']}\n\n" + (txt or ""), kb)
 
 
@@ -442,16 +446,18 @@ async def cb_active_set(c: CallbackQuery):
     w = store.get_week(wid)
     if not w:
         return await c.answer("Меню не найдено", show_alert=True)
-    store.set_setting("active_plan", wid)
-    store.set_setting("active_started", tznow().date().isoformat())
+    uid = c.from_user.id
+    store.set_user_setting(uid, "active_plan", wid)
+    store.set_user_setting(uid, "active_started", tznow().date().isoformat())
+    reschedule()
     await c.answer("Меню выбрано")
-    txt, kb = day_card(w, tznow().date(), "🍽 Сегодня")
+    txt, kb = day_card(w, tznow().date(), "🍽 Сегодня", uid)
     await safe_edit(c.message, f"✅ Питаемся по: {w['label']}\n\n" + (txt or ""), kb)
 
 
 @dp.callback_query(F.data == "actoff")
 async def cb_active_off(c: CallbackQuery):
-    store.del_setting("active_plan")
+    store.del_user_setting(c.from_user.id, "active_plan")
     await c.answer("Выключено")
     await cb_settings(c)
 
@@ -470,9 +476,9 @@ def supp_text(sp):
     return sp["name"] + (f" — {sp['dose']}" if sp["dose"] else "")
 
 
-def supps_by_slot():
+def supps_by_slot(uid):
     out = {}
-    for sp in store.all_supps():
+    for sp in store.all_supps(uid):
         for sl in (sp["slots"] or "").split(","):
             sl = sl.strip()
             if sl:
@@ -480,8 +486,8 @@ def supps_by_slot():
     return out
 
 
-def supps_screen():
-    supps = store.all_supps()
+def supps_screen(uid):
+    supps = store.all_supps(uid)
     rows = []
     for sp in supps:
         sl = [x for x in (sp["slots"] or "").split(",") if x]
@@ -499,13 +505,13 @@ def supps_screen():
 
 @dp.callback_query(F.data == "supps")
 async def cb_supps(c: CallbackQuery):
-    txt, kb = supps_screen()
+    txt, kb = supps_screen(c.from_user.id)
     await safe_edit(c.message, txt, kb)
     await c.answer()
 
 
 async def open_supp(c: CallbackQuery, sid):
-    sp = store.get_supp(sid)
+    sp = store.get_supp(c.from_user.id, sid)
     if not sp:
         return await c.answer("Не найдено", show_alert=True)
     chosen = {s.strip() for s in (sp["slots"] or "").split(",") if s.strip()}
@@ -528,7 +534,7 @@ async def cb_supp_view(c: CallbackQuery):
 @dp.callback_query(F.data.startswith("sslot:"))
 async def cb_supp_slot(c: CallbackQuery):
     _, sid, i = c.data.split(":")
-    sp = store.get_supp(sid)
+    sp = store.get_supp(c.from_user.id, sid)
     if not sp:
         return await c.answer("Не найдено", show_alert=True)
     slot = SLOTS[int(i)]
@@ -538,16 +544,16 @@ async def cb_supp_slot(c: CallbackQuery):
     else:
         chosen.append(slot)
     chosen = [s for s in SLOTS if s in chosen]      # держим порядок приёмов
-    store.set_supp_slots(sid, ",".join(chosen))
+    store.set_supp_slots(c.from_user.id, sid, ",".join(chosen))
     await open_supp(c, sid)
     await c.answer()
 
 
 @dp.callback_query(F.data.startswith("sdel:"))
 async def cb_supp_del(c: CallbackQuery):
-    store.del_supp(c.data.split(":", 1)[1])
+    store.del_supp(c.from_user.id, c.data.split(":", 1)[1])
     await c.answer("Удалено")
-    txt, kb = supps_screen()
+    txt, kb = supps_screen(c.from_user.id)
     await safe_edit(c.message, txt, kb)
 
 
@@ -578,11 +584,11 @@ async def on_supp_name(m: Message, state: FSMContext):
                 break
         else:
             name, dose = line, ""
-        store.add_supp(name.strip()[:60], dose.strip()[:40], "Завтрак")
+        store.add_supp(m.from_user.id, name.strip()[:60], dose.strip()[:40], "Завтрак")
         added += 1
         if added >= 15:
             break
-    txt, kb = supps_screen()
+    txt, kb = supps_screen(m.from_user.id)
     await show(m.chat.id,
                f"✅ Добавил: {added}. Пока все — к завтраку.\n"
                "Нажми на добавку, чтобы выбрать другие приёмы.\n\n" + txt, kb)
@@ -598,42 +604,63 @@ async def auth_mw(handler, event, data):
 
 
 # ---------- menu ----------
-def menu_kb():
-    return KB([
+def menu_kb(uid=None):
+    rows = []
+    if uid is not None and not active_plan(uid):
+        rows.append([B("▶️ Выбрать меню", "actsel")])
+    return KB(rows + [
         [B("🍽 Что сегодня", "today"), B("📅 Расписание", "schweeks")],
         [B("🛒 Закупки", "shopsrc"), B("📖 Рецепты", "recs")],
         [B("🎲 Случайное", "gen"), B("⚙️ Настройки", "settings")],
     ])
 
 
-def menu_text():
-    w = active_plan()
+def menu_text(uid):
+    w = active_plan(uid)
     d = tznow()
     head = f"🍲 <b>План питания</b>\n<i>{WEEKDAYS[d.weekday()]}, {d:%d.%m}</i>\n{HR}\n"
     if w:
-        day = day_for_date(w, d.date())
+        day = day_for_date(w, d.date(), uid)
         cur = f"▶️ Питаемся по: <b>{esc(w['label'])}</b>"
         if day:
             cur += f"\n📅 Сегодня — {esc(day['name'])}"
-        nxt = store.get_week(next_plan_id(w["id"])) if store.get_setting("auto_next", "1") == "1" else None
+        nxt = (store.get_week(next_plan_id(uid, w["id"]))
+               if store.get_user_setting(uid, "auto_next", "1") == "1" else None)
         if nxt:
             cur += f"\n⏭ С понедельника — {esc(nxt['label'])}"
     else:
-        cur = "▶️ <i>Меню не выбрано</i>\nНастройки → Текущее меню"
+        cur = "▶️ <i>Меню пока не выбрано</i>"
     return head + cur
+
+
+INTRO = (
+    "🍲 <b>План питания</b>\n" + HR + "\n"
+    "Меню на каждый день и список покупок — общий на семью: отметишь продукт, "
+    "и это увидят остальные.\n\n"
+    "Меню, добавки и напоминания у каждого свои.\n\n"
+    "Утром в 7:30 пришлю, что есть сегодня.\n"
+)
 
 
 @dp.message(CommandStart())
 async def start(m: Message):
+    uid = m.from_user.id
     store.add_chat(m.chat.id)
     await del_msg(m.chat.id, m.message_id)
-    await show(m.chat.id, menu_text(), menu_kb())
+    if store.get_user_setting(uid, "seen_intro") != "1":
+        store.set_user_setting(uid, "seen_intro", "1")
+        reschedule()                       # у нового человека — свои напоминания
+        w = active_plan(uid)
+        tail = (f"\nСейчас питаемся по <b>{esc(w['label'])}</b> — загляни, что сегодня."
+                if w else "\nНачнём: по какому меню питаемся?")
+        return await show(m.chat.id, INTRO + tail, menu_kb(uid))
+    await show(m.chat.id, menu_text(uid), menu_kb(uid))
 
 
 @dp.message(Command("menu"))
 async def menu_cmd(m: Message):
     await del_msg(m.chat.id, m.message_id)
-    await show(m.chat.id, menu_text(), menu_kb())
+    await show(m.chat.id, menu_text(m.from_user.id), menu_kb(m.from_user.id))
 
 
 @dp.message(Command("myid"))
@@ -829,7 +856,7 @@ async def cmd_restart(m: Message):
 
 @dp.callback_query(F.data == "menu")
 async def cb_menu(c: CallbackQuery):
-    await safe_edit(c.message, menu_text(), menu_kb())
+    await safe_edit(c.message, menu_text(c.from_user.id), menu_kb(c.from_user.id))
     await c.answer()
 
 
@@ -844,38 +871,39 @@ EVENING_DEFAULT = "21:00"
 TIME_CHOICES = ["06:30", "07:00", "07:30", "08:00", "08:30", "09:00"]
 
 
-def rem_on(key, default="1"):
-    return store.get_setting(key, default) == "1"
+def rem_on(uid, key, default="1"):
+    return store.get_user_setting(uid, key, default) == "1"
 
 
-def settings_kb():
+def settings_kb(uid):
     p = store.get_people()
-    w = active_plan()
+    w = active_plan(uid)
     cur = w["label"] if w else "не выбрано"
-    mt = store.get_setting("morning_time", MORNING_DEFAULT)
+    mt = store.get_user_setting(uid, "morning_time", MORNING_DEFAULT)
     rows = [
         [B("➖", "p:-"), B(f"👥 {p} чел.", "noop"), B("➕", "p:+")],
         [B(f"▶️ Текущее меню: {cur}"[:60], "actsel")],
-        [B(("⏭ Дальше: " + (store.get_week(next_plan_id(w["id"]))or{}).get("label","—")
-            if w and store.get_setting("auto_next", "1") == "1" else "⏭ Автопереход выключен")[:60], "nxtsel")],
-        [B(f"💊 Добавки: {len(store.all_supps())}", "supps")],
-        [B(f"🌅 Утром меню дня: {mt if rem_on('morning_on') else 'выкл'}", "remmorn")],
-        [B(f"🌙 Вечером о готовке: {'вкл' if rem_on('evening_on') else 'выкл'}", "remeve")],
-        [B(f"🛒 Напоминать о закупах: {'вкл' if rem_on('shop_on') else 'выкл'}", "remshop")],
+        [B(("⏭ Дальше: " + (store.get_week(next_plan_id(uid, w["id"])) or {}).get("label", "—")
+            if w and store.get_user_setting(uid, "auto_next", "1") == "1"
+            else "⏭ Автопереход выключен")[:60], "nxtsel")],
+        [B(f"💊 Добавки: {len(store.all_supps(uid))}", "supps")],
+        [B(f"🌅 Утром меню дня: {mt if rem_on(uid, 'morning_on') else 'выкл'}", "remmorn")],
+        [B(f"🌙 Вечером о готовке: {'вкл' if rem_on(uid, 'evening_on') else 'выкл'}", "remeve")],
+        [B(f"🛒 Напоминать о закупах: {'вкл' if rem_on(uid, 'shop_on') else 'выкл'}", "remshop")],
         [B("⌂ Меню", "menu")],
     ]
     return KB(rows)
 
 
 SETTINGS_TEXT = ("⚙️ <b>Настройки</b>\n" + HR + "\n"
-                 "<i>Количество едоков пересчитывает закупки.\n"
-                 "Текущее меню — то, по которому приходят напоминания.</i>\n\n"
+                 "<i>Меню, добавки и напоминания — личные, у каждого свои.\n"
+                 "Закупки и число едоков — общие на семью.</i>\n\n"
                  f"🕒 Часовой пояс: <code>{TZ}</code>")
 
 
 @dp.callback_query(F.data == "settings")
 async def cb_settings(c: CallbackQuery):
-    await safe_edit(c.message, SETTINGS_TEXT, settings_kb())
+    await safe_edit(c.message, SETTINGS_TEXT, settings_kb(c.from_user.id))
     await c.answer()
 
 
@@ -883,7 +911,7 @@ async def cb_settings(c: CallbackQuery):
 async def cb_people(c: CallbackQuery):
     store.set_people(store.get_people() + (1 if c.data.endswith("+") else -1))
     if (c.message.text or "").startswith("⚙️ Настройки"):
-        await safe_edit(c.message, SETTINGS_TEXT, settings_kb())
+        await safe_edit(c.message, SETTINGS_TEXT, settings_kb(c.from_user.id))
     else:
         await render_shop_here(c)
     await c.answer("Готово")
@@ -891,8 +919,9 @@ async def cb_people(c: CallbackQuery):
 
 @dp.callback_query(F.data == "remmorn")
 async def cb_rem_morning(c: CallbackQuery):
-    mt = store.get_setting("morning_time", MORNING_DEFAULT)
-    rows = [[B(("✅ " if t == mt and rem_on("morning_on") else "") + t, f"mt:{t}")]
+    uid = c.from_user.id
+    mt = store.get_user_setting(uid, "morning_time", MORNING_DEFAULT)
+    rows = [[B(("✅ " if t == mt and rem_on(uid, "morning_on") else "") + t, f"mt:{t}")]
             for t in TIME_CHOICES]
     rows.append([B("🔕 Выключить утренние", "mt:off")])
     rows.append([B("‹ Настройки", "settings")])
@@ -904,23 +933,25 @@ async def cb_rem_morning(c: CallbackQuery):
 @dp.callback_query(F.data.startswith("mt:"))
 async def cb_set_time(c: CallbackQuery):
     v = c.data.split(":", 1)[1]
+    uid = c.from_user.id
     if v == "off":
-        store.set_setting("morning_on", "0")
+        store.set_user_setting(uid, "morning_on", "0")
         await c.answer("Утренние выключены")
     else:
-        store.set_setting("morning_time", v)
-        store.set_setting("morning_on", "1")
+        store.set_user_setting(uid, "morning_time", v)
+        store.set_user_setting(uid, "morning_on", "1")
         await c.answer(f"Буду присылать в {v}")
     reschedule()
-    await safe_edit(c.message, SETTINGS_TEXT, settings_kb())
+    await safe_edit(c.message, SETTINGS_TEXT, settings_kb(c.from_user.id))
 
 
 @dp.callback_query(F.data.in_({"remeve", "remshop"}))
 async def cb_toggle_rem(c: CallbackQuery):
+    uid = c.from_user.id
     key = "evening_on" if c.data == "remeve" else "shop_on"
-    store.set_setting(key, "0" if rem_on(key) else "1")
+    store.set_user_setting(uid, key, "0" if rem_on(uid, key) else "1")
     reschedule()
-    await safe_edit(c.message, SETTINGS_TEXT, settings_kb())
+    await safe_edit(c.message, SETTINGS_TEXT, settings_kb(c.from_user.id))
     await c.answer("Готово")
 
 
@@ -957,7 +988,7 @@ async def cb_sch_day(c: CallbackQuery):
     day = w["days"][int(di)]
     lines = [f"📅 <b>{esc(day['name'])}</b>", f"<i>{esc(w['label'])}</i>", HR, ""]
     rec_btns, seen = [], set()
-    sb = supps_by_slot()
+    sb = supps_by_slot(c.from_user.id)
     for m in day["meals"]:
         if not m["d"] and m["t"] not in sb:
             continue
@@ -1581,32 +1612,31 @@ async def on_document(m: Message):
         await show(m.chat.id, f"Не получилось обновить план: {e}", KB([[B("⌂ Меню", "menu")]]))
 
 
-# ---------- напоминания ----------
-async def remind_morning():
-    switched = maybe_rollover()          # понедельник — переходим на следующее меню
-    w = active_plan()
+# ---------- напоминания (личные у каждого) ----------
+async def remind_morning(uid):
+    switched = maybe_rollover(uid)          # понедельник — переходим на следующее меню
+    w = active_plan(uid)
     if not w:
         return
-    d = tznow().date()
-    txt, kb = day_card(w, d, "🌅 Доброе утро! Сегодня")
+    txt, kb = day_card(w, tznow().date(), "🌅 Доброе утро! Сегодня", uid)
     if not txt:
         return
     if switched:
-        txt = f"🔄 Началась новая неделя — перешли на «{switched['label']}».\n\n" + txt
-    for cid in store.all_chats():
-        try:
-            await notify(cid, "morning", txt, kb)
-        except Exception:
-            logging.exception("morning to %s", cid)
+        txt = f"🔄 Началась новая неделя — перешли на «{esc(switched['label'])}».\n\n" + txt
+    try:
+        await notify(uid, "morning", txt, kb)
+    except Exception:
+        logging.exception("morning to %s", uid)
 
 
-async def remind_evening():
+async def remind_evening(uid):
     """Вечером — только если завтра начинается новый блок и надо готовить."""
-    w = active_plan()
+    w = active_plan(uid)
     if not w:
         return
     today = tznow().date()
-    d_today, d_tom = day_for_date(w, today), day_for_date(w, today + timedelta(days=1))
+    d_today = day_for_date(w, today, uid)
+    d_tom = day_for_date(w, today + timedelta(days=1), uid)
     if not d_tom or meals_equal(d_tom, d_today):
         return
     recs = recipes_in(d_tom)
@@ -1621,15 +1651,14 @@ async def remind_evening():
             lines.append(f"<b>{esc(m['t'])}</b>  " + esc("; ".join(m["d"])))
     rows = [[B(f"📖 {r['name']}", f"rv:{r['id']}")] for r in recs]
     rows.append([B("🛒 Закупки", f"shop:{w['id']}"), B("⌂ Меню", "menu")])
-    for cid in store.all_chats():
-        try:
-            await notify(cid, "evening", "\n".join(lines), KB(rows))
-        except Exception:
-            logging.exception("evening to %s", cid)
+    try:
+        await notify(uid, "evening", "\n".join(lines), KB(rows))
+    except Exception:
+        logging.exception("evening to %s", uid)
 
 
-async def remind_shop(kind):
-    w = active_plan()
+async def remind_shop(uid, kind):
+    w = active_plan(uid)
     base = {"t1": "🛒 <b>Пора сделать Закуп 1</b>\n<i>Бакалея на неделю + свежее на первую половину.</i>",
             "t2": "🛒 <b>Пора сделать Закуп 2</b>\n<i>Свежее на вторую половину. И свежий хлеб к выходным!</i>"}[kind]
     kb = KB([[B("⌂ Меню", "menu")]])
@@ -1644,49 +1673,55 @@ async def remind_shop(kind):
         base += (f"\n{HR}\n{esc(w['label'])}\n{bar(len(shop_trip) - len(left), len(shop_trip))}"
                  f"\nОсталось купить: <b>{len(left)}</b>")
         kb = KB([[B("🛒 Открыть список", f"shop:{w['id']}")], [B("⌂ Меню", "menu")]])
-    for cid in store.all_chats():
-        try:
-            await notify(cid, "shop" + kind, base, kb)
-        except Exception:
-            logging.exception("shop reminder to %s", cid)
+    try:
+        await notify(uid, "shop" + kind, base, kb)
+    except Exception:
+        logging.exception("shop reminder to %s", uid)
 
 
 sched = None
 
 
 def reschedule():
-    """Пересобрать задания по текущим настройкам."""
+    """Пересобрать задания: у каждого свои напоминания и своё время."""
     if sched is None:
         return
-    for jid in ("morning", "evening", "trip1", "trip2"):
+    for job in sched.get_jobs():
         try:
-            sched.remove_job(jid)
+            sched.remove_job(job.id)
         except Exception:
             pass
-    if rem_on("morning_on"):
-        hh, mm = (store.get_setting("morning_time", MORNING_DEFAULT) + ":0").split(":")[:2]
-        sched.add_job(remind_morning, "cron", hour=int(hh), minute=int(mm), id="morning",
-                      misfire_grace_time=3600, coalesce=True)
-    if rem_on("evening_on"):
-        hh, mm = EVENING_DEFAULT.split(":")
-        sched.add_job(remind_evening, "cron", hour=int(hh), minute=int(mm), id="evening",
-                      misfire_grace_time=3600, coalesce=True)
-    if rem_on("shop_on"):
-        sched.add_job(remind_shop, "cron", day_of_week="sun", hour=10, minute=0,
-                      args=["t1"], id="trip1", misfire_grace_time=7200, coalesce=True)
-        sched.add_job(remind_shop, "cron", day_of_week="wed", hour=18, minute=0,
-                      args=["t2"], id="trip2", misfire_grace_time=7200, coalesce=True)
+    for uid in store.all_chats():
+        if rem_on(uid, "morning_on"):
+            raw = store.get_user_setting(uid, "morning_time", MORNING_DEFAULT)
+            try:
+                hh, mm = [int(x) for x in raw.split(":")[:2]]
+            except Exception:
+                hh, mm = 7, 30
+            sched.add_job(remind_morning, "cron", hour=hh, minute=mm, args=[uid],
+                          id=f"m:{uid}", misfire_grace_time=3600, coalesce=True)
+        if rem_on(uid, "evening_on"):
+            hh, mm = [int(x) for x in EVENING_DEFAULT.split(":")]
+            sched.add_job(remind_evening, "cron", hour=hh, minute=mm, args=[uid],
+                          id=f"e:{uid}", misfire_grace_time=3600, coalesce=True)
+        if rem_on(uid, "shop_on"):
+            sched.add_job(remind_shop, "cron", day_of_week="sun", hour=10, minute=0,
+                          args=[uid, "t1"], id=f"s1:{uid}", misfire_grace_time=7200, coalesce=True)
+            sched.add_job(remind_shop, "cron", day_of_week="wed", hour=18, minute=0,
+                          args=[uid, "t2"], id=f"s2:{uid}", misfire_grace_time=7200, coalesce=True)
 
 
 async def main():
     global sched
     store.init()
+    if ADMINS:
+        store.migrate_personal(sorted(ADMINS)[0])   # старые общие настройки → владельцу
     if os.path.exists(UPDATE_FLAG):
         try:
             with open(UPDATE_FLAG, encoding="utf-8") as f:
                 cid = int(f.read().strip())
-            await show(cid, f"✅ Бот снова на связи.\n🏷 {version_line()}\n\n" + menu_text(),
-                       menu_kb())
+            await show(cid, f"✅ Бот снова на связи.\n🏷 {version_line()}\n\n" + menu_text(cid),
+                       menu_kb(cid))
         except Exception:
             logging.exception("update notify")
         finally:

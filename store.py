@@ -80,10 +80,14 @@ def init():
                 wid TEXT, trip INTEGER, name TEXT);
             CREATE TABLE IF NOT EXISTS supplements(
                 sid INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid INTEGER DEFAULT 0,
                 name TEXT, dose TEXT, slots TEXT);
             CREATE TABLE IF NOT EXISTS chats(chat_id INTEGER PRIMARY KEY);
             """
         )
+        cols = [r[1] for r in c.execute("PRAGMA table_info(supplements)").fetchall()]
+        if "uid" not in cols:                       # база из прошлой версии
+            c.execute("ALTER TABLE supplements ADD COLUMN uid INTEGER DEFAULT 0")
 
 
 # ---- settings (kv) ----
@@ -102,6 +106,33 @@ def set_setting(k, v):
 def del_setting(k):
     with conn() as c:
         c.execute("DELETE FROM kv WHERE k=?", (k,))
+
+
+# ---- личные настройки (у каждого свои) ----
+def get_user_setting(uid, k, default=None):
+    return get_setting(f"u{uid}:{k}", default)
+
+
+def set_user_setting(uid, k, v):
+    set_setting(f"u{uid}:{k}", v)
+
+
+def del_user_setting(uid, k):
+    del_setting(f"u{uid}:{k}")
+
+
+def migrate_personal(uid):
+    """Разовый перенос: то, что раньше было общим, становится личным для владельца."""
+    if not uid or get_setting("migrated_personal"):
+        return
+    for k in ("active_plan", "active_started", "next_plan", "auto_next",
+              "morning_time", "morning_on", "evening_on", "shop_on"):
+        v = get_setting(k)
+        if v is not None and get_user_setting(uid, k) is None:
+            set_user_setting(uid, k, v)
+    with conn() as c:
+        c.execute("UPDATE supplements SET uid=? WHERE uid IS NULL OR uid=0", (int(uid),))
+    set_setting("migrated_personal", "1")
 
 
 # ---- people ----
@@ -172,32 +203,36 @@ def del_extra(wid, eid):
 
 
 # ---- биодобавки ----
-def all_supps():
+def all_supps(uid):
     with conn() as c:
         return [dict(r) for r in c.execute(
-            "SELECT sid,name,dose,slots FROM supplements ORDER BY sid").fetchall()]
+            "SELECT sid,name,dose,slots FROM supplements WHERE uid=? ORDER BY sid",
+            (int(uid),)).fetchall()]
 
 
-def get_supp(sid):
+def get_supp(uid, sid):
     with conn() as c:
-        r = c.execute("SELECT sid,name,dose,slots FROM supplements WHERE sid=?", (int(sid),)).fetchone()
+        r = c.execute("SELECT sid,name,dose,slots FROM supplements WHERE sid=? AND uid=?",
+                      (int(sid), int(uid))).fetchone()
         return dict(r) if r else None
 
 
-def add_supp(name, dose, slots):
+def add_supp(uid, name, dose, slots):
     with conn() as c:
-        cur = c.execute("INSERT INTO supplements(name,dose,slots) VALUES(?,?,?)", (name, dose, slots))
+        cur = c.execute("INSERT INTO supplements(uid,name,dose,slots) VALUES(?,?,?,?)",
+                        (int(uid), name, dose, slots))
         return cur.lastrowid
 
 
-def set_supp_slots(sid, slots):
+def set_supp_slots(uid, sid, slots):
     with conn() as c:
-        c.execute("UPDATE supplements SET slots=? WHERE sid=?", (slots, int(sid)))
+        c.execute("UPDATE supplements SET slots=? WHERE sid=? AND uid=?",
+                  (slots, int(sid), int(uid)))
 
 
-def del_supp(sid):
+def del_supp(uid, sid):
     with conn() as c:
-        c.execute("DELETE FROM supplements WHERE sid=?", (int(sid),))
+        c.execute("DELETE FROM supplements WHERE sid=? AND uid=?", (int(sid), int(uid)))
 
 
 # ---- weeks (из plan.json + добавленные) ----
