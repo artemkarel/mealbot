@@ -469,8 +469,12 @@ def supps_by_slot():
 
 def supps_screen():
     supps = store.all_supps()
-    rows = [[B(f"💊 {sp['name']} · {sp['slots'] or 'без приёма'}"[:60], f"supp:{sp['sid']}")]
-            for sp in supps]
+    rows = []
+    for sp in supps:
+        sl = [x for x in (sp["slots"] or "").split(",") if x]
+        tag = "—" if not sl else (sl[0] if len(sl) == 1 else f"{sl[0]} +{len(sl)-1}")
+        nm = sp["name"] if len(sp["name"]) <= 18 else sp["name"][:17] + "…"
+        rows.append([B(f"💊 {nm} · {tag}", f"supp:{sp['sid']}")])
     rows.append([B("➕ Добавить добавку", "sadd")])
     rows.append([B("‹ Настройки", "settings"), B("⌂ Меню", "menu")])
     txt = ("💊 <b>Биодобавки</b>\n" + HR + "\n"
@@ -487,9 +491,7 @@ async def cb_supps(c: CallbackQuery):
     await c.answer()
 
 
-@dp.callback_query(F.data.startswith("supp:"))
-async def cb_supp_view(c: CallbackQuery):
-    sid = c.data.split(":", 1)[1]
+async def open_supp(c: CallbackQuery, sid):
     sp = store.get_supp(sid)
     if not sp:
         return await c.answer("Не найдено", show_alert=True)
@@ -502,6 +504,11 @@ async def cb_supp_view(c: CallbackQuery):
                     f"💊 <b>{esc(sp['name'])}</b>"
                     + (f"\n<i>{esc(sp['dose'])}</i>" if sp["dose"] else "")
                     + f"\n{HR}\nК каким приёмам пищи привязать:", KB(rows))
+
+
+@dp.callback_query(F.data.startswith("supp:"))
+async def cb_supp_view(c: CallbackQuery):
+    await open_supp(c, c.data.split(":", 1)[1])
     await c.answer()
 
 
@@ -519,8 +526,8 @@ async def cb_supp_slot(c: CallbackQuery):
         chosen.append(slot)
     chosen = [s for s in SLOTS if s in chosen]      # держим порядок приёмов
     store.set_supp_slots(sid, ",".join(chosen))
-    c.data = f"supp:{sid}"
-    await cb_supp_view(c)
+    await open_supp(c, sid)
+    await c.answer()
 
 
 @dp.callback_query(F.data.startswith("sdel:"))
@@ -582,7 +589,7 @@ def menu_kb():
     return KB([
         [B("🍽 Что сегодня", "today"), B("📅 Расписание", "schweeks")],
         [B("🛒 Закупки", "shopsrc"), B("📖 Рецепты", "recs")],
-        [B("🎲 Случайное меню", "gen"), B("⚙️ Настройки", "settings")],
+        [B("🎲 Случайное", "gen"), B("⚙️ Настройки", "settings")],
     ])
 
 
@@ -839,9 +846,9 @@ def settings_kb():
         [B(("⏭ Дальше: " + (store.get_week(next_plan_id(w["id"]))or{}).get("label","—")
             if w and store.get_setting("auto_next", "1") == "1" else "⏭ Автопереход выключен")[:60], "nxtsel")],
         [B(f"💊 Добавки: {len(store.all_supps())}", "supps")],
-        [B(f"🌅 Утром «что сегодня»: {mt if rem_on('morning_on') else 'выкл'}", "remmorn")],
-        [B(f"🌙 Вечером «что готовим завтра»: {'вкл' if rem_on('evening_on') else 'выкл'}", "remeve")],
-        [B(f"🛒 Напоминать про закупы: {'вкл' if rem_on('shop_on') else 'выкл'}", "remshop")],
+        [B(f"🌅 Утром меню дня: {mt if rem_on('morning_on') else 'выкл'}", "remmorn")],
+        [B(f"🌙 Вечером о готовке: {'вкл' if rem_on('evening_on') else 'выкл'}", "remeve")],
+        [B(f"🛒 Напоминать о закупах: {'вкл' if rem_on('shop_on') else 'выкл'}", "remshop")],
         [B("⌂ Меню", "menu")],
     ]
     return KB(rows)
@@ -1025,6 +1032,7 @@ async def cb_plan_screen(c: CallbackQuery):
 PREORDER = {"Ozon/WB", "idietum"}          # это заказываем заранее, доставка идёт несколько дней
 TRIP_NAME = {1: "🟢 Закуп 1 — начало недели", 2: "🟣 Закуп 2 — середина недели",
              "p": "📦 Заказать заранее"}
+TRIP_SHORT = {1: "🟢 Закуп 1", 2: "🟣 Закуп 2", "p": "📦 Заранее"}
 
 # режим отображения на пользователя
 _by_store = {}      # группировать по магазинам
@@ -1054,19 +1062,22 @@ def in_view(it, trip):
     return it["trip"] == trip
 
 
-def shop_button(mark, name, q, st, show_store):
-    label = f"{mark} {name}"
-    tail = (f" · {q}" if q else "") + (f" · {st}" if show_store else "")
-    room = 60 - len(tail) - 2
-    if len(label) > room:
-        label = label[:room].rstrip() + "…"
-    return label + tail
+BTN_WIDTH = 32          # столько символов реально помещается в кнопку на телефоне
+
+
+def shop_button(mark, name, q):
+    tail = f" · {q}" if q else ""
+    room = BTN_WIDTH - len(tail) - 2
+    if len(name) > room:
+        cut = name[:room - 1]
+        if " " in cut[room // 2:]:          # режем по слову, если получается
+            cut = cut[:cut.rfind(" ")]
+        name = cut.rstrip(" ,(") + "…"
+    return f"{mark} {name}{tail}"
 
 
 # ---------- экран выбора захода ----------
-@dp.callback_query(F.data.startswith("shop:"))
-async def cb_shop(c: CallbackQuery):
-    wid = c.data.split(":", 1)[1]
+async def open_shop(c: CallbackQuery, wid):
     w, items = shop_items(wid)
     if not w:
         return await c.answer("Меню не найдено", show_alert=True)
@@ -1079,17 +1090,22 @@ async def cb_shop(c: CallbackQuery):
             continue
         left = sum(1 for it in sel if it["iid"] not in checks)
         mark = "✅ " if left == 0 else ""
-        rows.append([B(f"{mark}{TRIP_NAME[trip]} · {left} из {len(sel)}", f"st:{wid}:{trip}")])
-    rows.append([B("📋 Прислать списком", f"txt:{wid}:all")])
+        rows.append([B(f"{mark}{TRIP_SHORT[trip]} · {left} из {len(sel)}", f"st:{wid}:{trip}")])
+    rows.append([B("📋 Весь список текстом", f"txt:{wid}:all")])
     rows.append([B("➖", "p:-"), B(f"👥 {people} чел.", "noop"), B("➕", "p:+")])
-    rows.append([B("↩︎ Сбросить все отметки", f"rs:{wid}:all")])
-    rows.append([B("‹ Карточка меню", f"plan:{wid}"), B("⌂ Меню", "menu")])
+    rows.append([B("↩︎ Сбросить всё", f"rs:{wid}:all")])
+    rows.append([B("‹ Назад", f"plan:{wid}"), B("⌂ Меню", "menu")])
     done = sum(1 for it in items if it["iid"] in checks)
     txt = (f"🛒 <b>Закупки</b>\n<i>{esc(w['label'])} · на {people} чел.</i>\n{HR}\n"
            f"{bar(done, len(items))}\nКуплено <b>{done}</b> из {len(items)}\n\n"
            "Выбери, что закупаешь сейчас:")
     _last_view[c.from_user.id] = (wid, None)
     await safe_edit(c.message, txt, KB(rows))
+
+
+@dp.callback_query(F.data.startswith("shop:"))
+async def cb_shop(c: CallbackQuery):
+    await open_shop(c, c.data.split(":", 1)[1])
     await c.answer()
 
 
@@ -1128,17 +1144,16 @@ def render_trip(wid, trip, uid):
             last = h
         mark = "✅" if it["iid"] in checks else "⬜"
         q = fmtqty(it["qty"], it["unit"], people)
-        st = store_of(it["badge"], it["cat"])
-        rows.append([B(shop_button(mark, it["name"], q, st, not by_store), f"t:{it['iid']}")])
+        rows.append([B(shop_button(mark, it["name"], q), f"t:{it['iid']}")])
 
-    rows.append([B("🏬 По магазинам" if not by_store else "📦 По разделам", f"grp:{wid}"),
-                 B("🙈 Скрыть купленное" if not hide else "👁 Показать всё", f"hide:{wid}")])
-    rows.append([B("➕ Добавить своё", f"add:{wid}:{trip}"),
+    rows.append([B("🏬 Магазины" if not by_store else "📦 Разделы", f"grp:{wid}"),
+                 B("🙈 Скрыть ✅" if not hide else "👁 Показать всё", f"hide:{wid}")])
+    rows.append([B("➕ Добавить", f"add:{wid}:{trip}"),
                  B("📋 Списком", f"txt:{wid}:{trip}")])
     if any(it["eid"] for it in sel):
         rows.append([B("🗑 Мои пункты", f"xlist:{wid}:{trip}")])
     rows.append([B("➖", "p:-"), B(f"👥 {people} чел.", "noop"), B("➕", "p:+")])
-    rows.append([B("↩︎ Сбросить этот заход", f"rs:{wid}:{trip}")])
+    rows.append([B("↩︎ Сбросить заход", f"rs:{wid}:{trip}")])
     rows.append([B("‹ Заходы", f"shop:{wid}"), B("⌂ Меню", "menu")])
     return text, KB(rows)
 
@@ -1162,8 +1177,7 @@ async def refresh_view(c: CallbackQuery):
     if not wid:
         return
     if trip is None:
-        c.data = f"shop:{wid}"
-        return await cb_shop(c)
+        return await open_shop(c, wid)
     text, kb = render_trip(wid, trip, c.from_user.id)
     await safe_edit(c.message, text, kb)
 
@@ -1270,14 +1284,18 @@ async def on_extra_name(m: Message, state: FSMContext):
     await show(m.chat.id, text, kb)
 
 
-@dp.callback_query(F.data.startswith("xlist:"))
-async def cb_extras(c: CallbackQuery):
-    _, wid, t = c.data.split(":")
+async def open_extras(c: CallbackQuery, wid, t):
     _, items = shop_items(wid)
     mine = [it for it in items if it["eid"] and in_view(it, parse_trip(t))]
     rows = [[B(f"🗑 {it['name']}"[:60], f"xdel:{wid}:{t}:{it['eid']}")] for it in mine]
     rows.append([B("‹ Назад", f"st:{wid}:{t}")])
     await safe_edit(c.message, "Мои пункты. Нажми, чтобы удалить:", KB(rows))
+
+
+@dp.callback_query(F.data.startswith("xlist:"))
+async def cb_extras(c: CallbackQuery):
+    _, wid, t = c.data.split(":")
+    await open_extras(c, wid, t)
     await c.answer()
 
 
@@ -1286,10 +1304,9 @@ async def cb_extra_del(c: CallbackQuery):
     _, wid, t, eid = c.data.split(":")
     store.del_extra(wid, eid)
     await c.answer("Удалено")
-    c.data = f"xlist:{wid}:{t}"
     _, items = shop_items(wid)
     if any(it["eid"] and in_view(it, parse_trip(t)) for it in items):
-        await cb_extras(c)
+        await open_extras(c, wid, t)
     else:
         text, kb = render_trip(wid, parse_trip(t), c.from_user.id)
         await safe_edit(c.message, text, kb)
@@ -1573,18 +1590,14 @@ async def remind_morning():
 
 
 async def remind_evening():
-    """Вечером — только если завтра начинается новый блок или что-то надо готовить."""
+    """Вечером — только если завтра начинается новый блок и надо готовить."""
     w = active_plan()
     if not w:
         return
     today = tznow().date()
-    tom = today + timedelta(days=1)
-    d_today, d_tom = day_for_date(w, today), day_for_date(w, tom)
-    if not d_tom:
+    d_today, d_tom = day_for_date(w, today), day_for_date(w, today + timedelta(days=1))
+    if not d_tom or meals_equal(d_tom, d_today):
         return
-    new_block = not meals_equal(d_tom, d_today)
-    if not new_block:
-        return                      # завтра доедаем сегодняшнее — готовить нечего
     recs = recipes_in(d_tom)
     lines = [f"🌙 <b>Завтра — {esc(d_tom['name'])}</b>", HR,
              "<i>Новый блок: блюда меняются, готовим заново.</i>"]

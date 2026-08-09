@@ -200,7 +200,7 @@ def del_supp(sid):
         c.execute("DELETE FROM supplements WHERE sid=?", (int(sid),))
 
 
-# ---- weeks (built-in from plan.json + added from parsed files) ----
+# ---- weeks (из plan.json + добавленные) ----
 def all_weeks():
     weeks = [dict(w) for w in PLAN["weeks"]]
     with conn() as c:
@@ -214,6 +214,17 @@ def get_week(wid):
         if w["id"] == wid:
             return w
     return None
+
+
+def add_week(week):
+    with conn() as c:
+        n = c.execute("SELECT COALESCE(MAX(ord),0)+1 AS n FROM weeks").fetchone()["n"]
+        wid = "x%d" % n
+        week["id"] = wid
+        week.setdefault("accent", "#33624F")
+        c.execute("INSERT INTO weeks(wid,ord,data) VALUES(?,?,?)",
+                  (wid, n, json.dumps(week, ensure_ascii=False)))
+    return wid
 
 
 # ---- generated (random) menus ----
@@ -239,20 +250,7 @@ def delete_generated(gid):
         c.execute("DELETE FROM checks WHERE item_id LIKE ?", (gid + ":%",))
 
 
-def add_week(week):
-    with conn() as c:
-        n = c.execute("SELECT COALESCE(MAX(ord),0)+1 AS n FROM weeks").fetchone()["n"]
-        wid = "x%d" % n
-        week["id"] = wid
-        week.setdefault("accent", "#33624F")
-        c.execute(
-            "INSERT INTO weeks(wid,ord,data) VALUES(?,?,?)",
-            (wid, n, json.dumps(week, ensure_ascii=False)),
-        )
-    return wid
-
-
-# ---- recipes (built-in + edited overrides) ----
+# ---- recipes (встроенные + отредактированные) ----
 def all_recipes():
     base = {r["id"]: dict(r) for r in PLAN["recipes"]}
     with conn() as c:
@@ -271,10 +269,8 @@ def get_recipe(rid):
 
 def save_recipe(r):
     with conn() as c:
-        c.execute(
-            "INSERT INTO recipes(rid,data) VALUES(?,?) ON CONFLICT(rid) DO UPDATE SET data=excluded.data",
-            (r["id"], json.dumps(r, ensure_ascii=False)),
-        )
+        c.execute("INSERT INTO recipes(rid,data) VALUES(?,?) ON CONFLICT(rid) DO UPDATE SET data=excluded.data",
+                  (r["id"], json.dumps(r, ensure_ascii=False)))
 
 
 # ---- chats (for reminders) ----
