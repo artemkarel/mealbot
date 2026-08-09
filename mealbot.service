@@ -1,0 +1,17 @@
+[Unit]
+Description=Meal plan Telegram bot
+After=network-online.target
+Wants=network-online.target
+# не сдаваться после нескольких неудачных попыток подряд
+StartLimitIntervalSec=0
+
+[Service]
+WorkingDirectory=/opt/mealbot
+EnvironmentFile=/opt/mealbot/.env
+ExecStart=/opt/mealbot/venv/bin/python bot.py
+Restart=always
+RestartSec=5
+TimeoutStopSec=20
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+# личные данные и окружение — на GitHub не попадают
+.env
+data.db
+plan.local.json
+plan.local.json.bak
+venv/
+__pycache__/
+*.pyc
+.update_notify
