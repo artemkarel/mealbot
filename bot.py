@@ -68,11 +68,60 @@ def recipe_for(dish):
     return None
 
 
+async def del_msg(chat_id, mid):
+    """Тихо удалить сообщение (Telegram позволяет это в течение 48 часов)."""
+    try:
+        await bot.delete_message(chat_id, int(mid))
+    except Exception:
+        pass
+
+
+def ui_key(chat_id):
+    return f"ui:{chat_id}"
+
+
+async def adopt_window(msg):
+    """Сделать это сообщение единственным «окном приложения», старое убрать."""
+    prev = store.get_setting(ui_key(msg.chat.id))
+    if prev and int(prev) != msg.message_id:
+        await del_msg(msg.chat.id, prev)
+    store.set_setting(ui_key(msg.chat.id), msg.message_id)
+
+
+async def show(chat_id, text, kb=None):
+    """Показать экран в одном и том же окне: правим сообщение, а не плодим новые."""
+    mid = store.get_setting(ui_key(chat_id))
+    if mid:
+        try:
+            await bot.edit_message_text(text, chat_id=chat_id, message_id=int(mid), reply_markup=kb)
+            return
+        except TelegramBadRequest as e:
+            if "not modified" in str(e):
+                return
+        except Exception:
+            pass
+        await del_msg(chat_id, mid)
+    m = await bot.send_message(chat_id, text, reply_markup=kb)
+    store.set_setting(ui_key(chat_id), m.message_id)
+
+
+async def notify(chat_id, kind, text, kb=None):
+    """Уведомление (напоминание): предыдущее такого же вида убираем."""
+    k = f"rem:{kind}:{chat_id}"
+    prev = store.get_setting(k)
+    cur_ui = store.get_setting(ui_key(chat_id))
+    if prev and prev != cur_ui:
+        await del_msg(chat_id, prev)
+    m = await bot.send_message(chat_id, text, reply_markup=kb)
+    store.set_setting(k, m.message_id)
+
+
 async def safe_edit(msg: Message, text, kb):
     try:
         await msg.edit_text(text, reply_markup=kb)
     except TelegramBadRequest:
         pass  # "message is not modified" и т.п.
+    await adopt_window(msg)
 
 
 # ---------- текущее меню и «что сегодня» ----------
@@ -165,29 +214,32 @@ async def send_day(chat_id, head, shift=0):
     txt, kb = day_card(w, tznow().date() + timedelta(days=shift), head)
     if not txt:
         return False
-    await bot.send_message(chat_id, txt, reply_markup=kb)
+    await show(chat_id, txt, kb)
     return True
 
 
 @dp.message(Command("today"))
 async def cmd_today(m: Message):
+    await del_msg(m.chat.id, m.message_id)
     if not await send_day(m.chat.id, "🍽 Сегодня"):
-        await m.answer("Сначала выбери текущее меню.", reply_markup=KB([[B("▶️ Выбрать меню", "actsel")]]))
+        await show(m.chat.id, "Сначала выбери текущее меню.", KB([[B("▶️ Выбрать меню", "actsel")]]))
 
 
 @dp.message(Command("tomorrow"))
 async def cmd_tomorrow(m: Message):
+    await del_msg(m.chat.id, m.message_id)
     if not await send_day(m.chat.id, "🌙 Завтра", 1):
-        await m.answer("Сначала выбери текущее меню.", reply_markup=KB([[B("▶️ Выбрать меню", "actsel")]]))
+        await show(m.chat.id, "Сначала выбери текущее меню.", KB([[B("▶️ Выбрать меню", "actsel")]]))
 
 
 @dp.callback_query(F.data.in_({"today", "tomorrow"}))
 async def cb_today(c: CallbackQuery):
     await c.answer()
     head, shift = ("🍽 Сегодня", 0) if c.data == "today" else ("🌙 Завтра", 1)
+    await adopt_window(c.message)
     if not await send_day(c.message.chat.id, head, shift):
-        await c.message.answer("Сначала выбери текущее меню.",
-                               reply_markup=KB([[B("▶️ Выбрать меню", "actsel")]]))
+        await show(c.message.chat.id, "Сначала выбери текущее меню.",
+                   KB([[B("▶️ Выбрать меню", "actsel")]]))
 
 
 # ---------- выбор текущего меню ----------
@@ -273,17 +325,22 @@ def menu_text():
 @dp.message(CommandStart())
 async def start(m: Message):
     store.add_chat(m.chat.id)
-    await m.answer(menu_text(), reply_markup=menu_kb())
+    await del_msg(m.chat.id, m.message_id)
+    await show(m.chat.id, menu_text(), menu_kb())
 
 
 @dp.message(Command("menu"))
 async def menu_cmd(m: Message):
-    await m.answer(menu_text(), reply_markup=menu_kb())
+    await del_msg(m.chat.id, m.message_id)
+    await show(m.chat.id, menu_text(), menu_kb())
 
 
 @dp.message(Command("myid"))
 async def myid(m: Message):
-    await m.answer(f"Твой Telegram ID: {m.from_user.id}\nВпиши его в ALLOWED_IDS, чтобы ограничить доступ семьёй.")
+    await del_msg(m.chat.id, m.message_id)
+    await show(m.chat.id, f"Твой Telegram ID: {m.from_user.id}\n\n"
+               "Впиши его в ALLOWED_IDS (доступ к боту) и ADMIN_IDS (обновления).",
+               KB([[B("⌂ Меню", "menu")]]))
 
 
 # ---------- обновление кода с GitHub ----------
@@ -308,7 +365,8 @@ def version_line():
 
 @dp.message(Command("version"))
 async def cmd_version(m: Message):
-    await m.answer(f"🏷 Версия на сервере:\n{version_line()}")
+    await del_msg(m.chat.id, m.message_id)
+    await show(m.chat.id, f"🏷 Версия на сервере:\n{version_line()}", KB([[B("⌂ Меню", "menu")]]))
 
 
 # ---------- самоконтроль: бот должен быть на связи ----------
@@ -346,55 +404,61 @@ async def cmd_status(m: Message):
     w = active_plan()
     jobs = ", ".join(f"{j.id} → {j.next_run_time:%d.%m %H:%M}" for j in sched.get_jobs()) \
         if sched and sched.get_jobs() else "нет"
-    await m.answer(
+    await del_msg(m.chat.id, m.message_id)
+    await show(m.chat.id,
         "📊 Состояние бота\n\n"
         f"Работает без перерыва: {upstr}\n"
         f"Связь с Telegram: {ago} сек назад\n"
         f"Текущее меню: {w['label'] if w else 'не выбрано'}\n"
         f"Часовой пояс: {TZ} · сейчас {tznow():%d.%m %H:%M}\n"
         f"Напоминания: {jobs}\n"
-        f"🏷 {version_line()}")
+        f"🏷 {version_line()}", KB([[B("⌂ Меню", "menu")]]))
 
 
 @dp.message(Command("update"))
 async def cmd_update(m: Message):
+    await del_msg(m.chat.id, m.message_id)
     if not is_admin(m.from_user.id):
-        return await m.answer("Команда доступна только владельцу бота (задай ADMIN_IDS в .env).")
-    await m.answer("⏳ Скачиваю обновление и проверяю код…")
+        return await show(m.chat.id, "Команда доступна только владельцу бота (задай ADMIN_IDS в .env).",
+                          KB([[B("⌂ Меню", "menu")]]))
+    await show(m.chat.id, "⏳ Скачиваю обновление и проверяю код…")
     try:
         r = await asyncio.to_thread(
             subprocess.run, ["bash", os.path.join(BASE_DIR, "update.sh")],
             capture_output=True, text=True, timeout=600)
         out = ((r.stdout or "") + (r.stderr or "")).strip()
     except Exception as e:
-        return await m.answer(f"❌ Не смог запустить обновление: {e}")
+        return await show(m.chat.id, f"❌ Не смог запустить обновление: {e}", KB([[B("⌂ Меню", "menu")]]))
 
     tail = out[-1200:] if out else "(пусто)"
     if r.returncode != 0:
-        return await m.answer(f"❌ Обновление отменено, работаю на прежней версии.\n\n{tail}")
+        return await show(m.chat.id, f"❌ Обновление отменено, работаю на прежней версии.\n\n{tail}",
+                          KB([[B("⌂ Меню", "menu")]]))
     if "NOCHANGE" in out:
-        return await m.answer(f"✅ {version_line()}\n\nОбновлений нет — на сервере уже последняя версия.")
+        return await show(m.chat.id, f"✅ {version_line()}\n\nОбновлений нет — на сервере уже последняя версия.",
+                          KB([[B("⌂ Меню", "menu")]]))
 
     try:
         with open(UPDATE_FLAG, "w", encoding="utf-8") as f:
             f.write(str(m.chat.id))
     except Exception:
         pass
-    await m.answer(f"✅ Код обновлён:\n{tail}\n\nПерезапускаюсь, вернусь через несколько секунд…")
+    await show(m.chat.id, f"✅ Код обновлён:\n{tail}\n\nПерезапускаюсь, вернусь через несколько секунд…")
     await asyncio.sleep(1)
     os._exit(0)          # systemd поднимет бота заново уже с новым кодом
 
 
 @dp.message(Command("restart"))
 async def cmd_restart(m: Message):
+    await del_msg(m.chat.id, m.message_id)
     if not is_admin(m.from_user.id):
-        return await m.answer("Команда доступна только владельцу бота.")
+        return await show(m.chat.id, "Команда доступна только владельцу бота.", KB([[B("⌂ Меню", "menu")]]))
     try:
         with open(UPDATE_FLAG, "w", encoding="utf-8") as f:
             f.write(str(m.chat.id))
     except Exception:
         pass
-    await m.answer("🔄 Перезапускаюсь…")
+    await show(m.chat.id, "🔄 Перезапускаюсь…")
     await asyncio.sleep(1)
     os._exit(0)
 
@@ -818,7 +882,13 @@ async def cb_text_list(c: CallbackQuery):
     else:
         out.append("\nМожно переслать этот список кому-то из семьи.")
     await c.answer()
-    await c.message.answer("\n".join(out))
+    await adopt_window(c.message)
+    chat = c.message.chat.id
+    prev = store.get_setting(f"exp:{chat}")
+    if prev:
+        await del_msg(chat, prev)
+    sent = await bot.send_message(chat, "\n".join(out))
+    store.set_setting(f"exp:{chat}", sent.message_id)
 
 
 # ---------- свои пункты ----------
@@ -827,7 +897,8 @@ async def cb_add_extra(c: CallbackQuery, state: FSMContext):
     _, wid, t = c.data.split(":")
     await state.update_data(wid=wid, trip=t)
     await state.set_state(Edit.extra_name)
-    await c.message.answer("Что добавить в список? Можно сразу несколько — каждый пункт с новой строки.")
+    await safe_edit(c.message, "➕ Что добавить в список?\nМожно сразу несколько — каждый пункт с новой строки.",
+                    KB([[B("✖︎ Отмена", f"st:{wid}:{t}")]]))
     await c.answer()
 
 
@@ -840,8 +911,10 @@ async def on_extra_name(m: Message, state: FSMContext):
     for n in names[:20]:
         store.add_extra(wid, trip, n[:80])
     await state.clear()
-    await m.answer(f"✅ Добавил в список: {len(names[:20])}",
-                   reply_markup=KB([[B("🛒 Открыть заход", f"st:{wid}:{t}")], [B("⌂ Меню", "menu")]]))
+    await del_msg(m.chat.id, m.message_id)
+    trip_v = parse_trip(t)
+    text, kb = render_trip(wid, trip_v, m.from_user.id)
+    await show(m.chat.id, text, kb)
 
 
 @dp.callback_query(F.data.startswith("xlist:"))
@@ -907,7 +980,8 @@ async def cb_recipe_edit(c: CallbackQuery, state: FSMContext):
     rid = c.data.split(":", 1)[1]
     await state.update_data(rid=rid)
     await state.set_state(Edit.recipe_text)
-    await c.message.answer("Пришли новый текст рецепта одним сообщением — я сохраню его как есть.")
+    await safe_edit(c.message, "✏️ Пришли новый текст рецепта одним сообщением — сохраню как есть.",
+                    KB([[B("✖︎ Отмена", f"rv:{rid}")]]))
     await c.answer()
 
 
@@ -918,22 +992,29 @@ async def on_recipe_text(m: Message, state: FSMContext):
     if r:
         r["text"] = m.text or ""
         store.save_recipe(r)
-        await m.answer("✅ Рецепт обновлён.", reply_markup=KB([[B("Открыть", f"rv:{r['id']}")], [B("⌂ Меню", "menu")]]))
+    await del_msg(m.chat.id, m.message_id)
     await state.clear()
+    if r:
+        await show(m.chat.id, recipe_text(r),
+                   KB([[B("✏️ Редактировать", f"re:{r['id']}")],
+                       [B("‹ Рецепты", "recs"), B("⌂ Меню", "menu")]]))
 
 
 @dp.callback_query(F.data == "radd")
 async def cb_recipe_add(c: CallbackQuery, state: FSMContext):
     await state.set_state(Edit.new_name)
-    await c.message.answer("Название нового рецепта?")
+    await safe_edit(c.message, "➕ Название нового рецепта?", KB([[B("✖︎ Отмена", "recs")]]))
     await c.answer()
 
 
 @dp.message(Edit.new_name)
 async def on_new_name(m: Message, state: FSMContext):
-    await state.update_data(name=m.text or "Без названия")
+    data_name = m.text or "Без названия"
+    await state.update_data(name=data_name)
     await state.set_state(Edit.new_text)
-    await m.answer("Теперь пришли текст рецепта одним сообщением.")
+    await del_msg(m.chat.id, m.message_id)
+    await show(m.chat.id, f"➕ {data_name}\n\nТеперь пришли текст рецепта одним сообщением.",
+               KB([[B("✖︎ Отмена", "recs")]]))
 
 
 @dp.message(Edit.new_text)
@@ -943,8 +1024,11 @@ async def on_new_text(m: Message, state: FSMContext):
     rid = "u" + re.sub(r"\W+", "", (data["name"] or "r"))[:12].lower() + str(abs(hash(data["name"])) % 1000)
     r = {"id": rid, "name": data["name"], "out": "", "ing": [], "steps": [], "tips": [], "text": m.text or ""}
     store.save_recipe(r)
-    await m.answer("✅ Рецепт добавлен.", reply_markup=KB([[B("Открыть", f"rv:{rid}")], [B("⌂ Меню", "menu")]]))
+    await del_msg(m.chat.id, m.message_id)
     await state.clear()
+    await show(m.chat.id, recipe_text(r),
+               KB([[B("✏️ Редактировать", f"re:{rid}")],
+                   [B("‹ Рецепты", "recs"), B("⌂ Меню", "menu")]]))
 
 
 # ---------- случайное меню на неделю ----------
@@ -1094,23 +1178,23 @@ async def cb_generate_delete(c: CallbackQuery):
 @dp.message(F.document)
 async def on_document(m: Message):
     fn = (m.document.file_name or "").lower()
+    await del_msg(m.chat.id, m.message_id)
     if not fn.endswith(".json"):
-        return await m.answer("Обновить план можно файлом plan.json.",
-                              reply_markup=KB([[B("⌂ Меню", "menu")]]))
-    await m.answer("📥 Читаю план…")
+        return await show(m.chat.id, "Обновить план можно файлом plan.json.",
+                          KB([[B("⌂ Меню", "menu")]]))
+    await show(m.chat.id, "📥 Читаю план…")
     try:
         buf = io.BytesIO()
         await bot.download(m.document, destination=buf)
         weeks, recipes = await asyncio.to_thread(store.replace_plan, buf.getvalue())
-        await m.answer(
+        await show(m.chat.id,
             f"✅ План обновлён.\nНедель: {weeks} · рецептов: {recipes}\n\n"
-            "Старый файл сохранён как plan.json.bak. Отметки «куплено» не тронуты.",
-            reply_markup=KB([[B("📅 Расписание", "schweeks"), B("🛒 Закупки", "shopsrc")],
-                             [B("⌂ Меню", "menu")]]),
-        )
+            "Прежняя версия сохранена. Отметки «куплено» не тронуты.",
+            KB([[B("📅 Расписание", "schweeks"), B("🛒 Закупки", "shopsrc")],
+                [B("⌂ Меню", "menu")]]))
     except Exception as e:
         logging.exception("replace plan")
-        await m.answer(f"Не получилось обновить план: {e}")
+        await show(m.chat.id, f"Не получилось обновить план: {e}", KB([[B("⌂ Меню", "menu")]]))
 
 
 # ---------- напоминания ----------
@@ -1124,7 +1208,7 @@ async def remind_morning():
         return
     for cid in store.all_chats():
         try:
-            await bot.send_message(cid, txt, reply_markup=kb)
+            await notify(cid, "morning", txt, kb)
         except Exception:
             logging.exception("morning to %s", cid)
 
@@ -1155,7 +1239,7 @@ async def remind_evening():
     rows.append([B("🛒 Закупки", f"shop:{w['id']}"), B("⌂ Меню", "menu")])
     for cid in store.all_chats():
         try:
-            await bot.send_message(cid, "\n".join(lines), reply_markup=KB(rows))
+            await notify(cid, "evening", "\n".join(lines), KB(rows))
         except Exception:
             logging.exception("evening to %s", cid)
 
@@ -1178,7 +1262,7 @@ async def remind_shop(kind):
         kb = KB([[B("🛒 Открыть список", f"shop:{w['id']}")], [B("⌂ Меню", "menu")]])
     for cid in store.all_chats():
         try:
-            await bot.send_message(cid, base, reply_markup=kb)
+            await notify(cid, "shop" + kind, base, kb)
         except Exception:
             logging.exception("shop reminder to %s", cid)
 
@@ -1217,8 +1301,8 @@ async def main():
         try:
             with open(UPDATE_FLAG, encoding="utf-8") as f:
                 cid = int(f.read().strip())
-            await bot.send_message(cid, f"✅ Бот снова на связи.\n🏷 {version_line()}",
-                                   reply_markup=menu_kb())
+            await show(cid, f"✅ Бот снова на связи.\n🏷 {version_line()}\n\n" + menu_text(),
+                       menu_kb())
         except Exception:
             logging.exception("update notify")
         finally:
