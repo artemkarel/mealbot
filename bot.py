@@ -3,10 +3,13 @@
 счётчик людей, рецепты с редактированием, обновление плана файлом plan.json,
 выбор блюд -> список покупок, напоминания. Без внешних ИИ-сервисов."""
 import os, io, math, time, random, asyncio, logging, subprocess
+from html import escape as esc
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
 
 from aiogram import Bot, Dispatcher, F
+from aiogram.client.default import DefaultBotProperties
+from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
                            BotCommand, BotCommandScopeDefault, BotCommandScopeChat, ErrorEvent)
@@ -37,7 +40,7 @@ def id_set(name):
 
 ALLOWED = id_set("ALLOWED_IDS")
 
-bot = Bot(BOT_TOKEN)
+bot = Bot(BOT_TOKEN, default=DefaultBotProperties(parse_mode=ParseMode.HTML))
 dp = Dispatcher(storage=MemoryStorage())
 
 RECIPE_PREFIX = [("Овощной суп на костном бульоне", "veg"), ("Уха", "uha"),
@@ -51,6 +54,48 @@ def B(text, data):
 
 def KB(rows):
     return InlineKeyboardMarkup(inline_keyboard=rows)
+
+
+HR = "━━━━━━━━━━━━━━━"
+
+
+def bar(done, total, width=10):
+    """Полоса прогресса: ▰▰▰▱▱▱▱▱▱▱ 30%"""
+    if not total:
+        return ""
+    filled = round(width * done / total)
+    return "▰" * filled + "▱" * (width - filled) + f"  {round(100 * done / total)}%"
+
+
+def clip(text, limit=3900):
+    """Безопасно укоротить: режем по строкам, чтобы не разорвать HTML-тег."""
+    if len(text) <= limit:
+        return text
+    cut = text[:limit]
+    if "\n" in cut:
+        cut = cut[:cut.rfind("\n")]
+    return cut + "\n…"
+
+
+def chunks(lines, limit=3900):
+    """Разбить длинный список строк на сообщения по границам строк."""
+    out, cur = [], ""
+    for ln in lines:
+        if len(cur) + len(ln) + 1 > limit:
+            out.append(cur)
+            cur = ""
+        cur += ("\n" if cur else "") + ln
+    if cur:
+        out.append(cur)
+    return out
+
+
+def dish_line(d, marker="•"):
+    """Блюдо: название обычным, количество — приглушённо."""
+    if " — " in d:
+        name, amt = d.split(" — ", 1)
+        return f"{marker} {esc(name)}  <i>{esc(amt)}</i>"
+    return f"{marker} {esc(d)}"
 
 
 def fmtqty(q, u, people):
@@ -236,23 +281,24 @@ def day_card(w, d, head):
         return None, None
     prev = day_for_date(w, d - timedelta(days=1))
     same_as_yesterday = meals_equal(day, prev)
-    lines = [f"{head} · {day['name']}, {d.strftime('%d.%m')}", f"Меню: {w['label']}", ""]
+    lines = [f"<b>{esc(head)}</b>",
+             f"<i>{esc(day['name'])}, {d:%d.%m} · {esc(w['label'])}</i>", HR, ""]
     sb = supps_by_slot()
     for m in day["meals"]:
         if not m["d"] and m["t"] not in sb:
             continue
-        lines.append(f"🍽 {m['t']}")
-        lines += [f"   • {x}" for x in m["d"]]
-        lines += [f"   💊 {supp_text(sp)}" for sp in sb.get(m["t"], [])]
+        lines.append(f"<b>{esc(m['t'])}</b>")
+        lines += [f"  {dish_line(x)}" for x in m["d"]]
+        lines += [f"  💊 <i>{esc(supp_text(sp))}</i>" for sp in sb.get(m["t"], [])]
         lines.append("")
     if same_as_yesterday:
-        lines.append("♻️ Сегодня то же, что вчера — готовить заново не нужно.")
+        lines.append("♻️ <i>Сегодня то же, что вчера — готовить заново не нужно.</i>")
     else:
         nxt = day_for_date(w, d + timedelta(days=1))
         if meals_equal(day, nxt):
-            lines.append("🍳 Новые блюда. Готовим сразу на два дня — завтра то же самое.")
+            lines.append("🍳 <b>Готовим сегодня</b> — сразу на два дня, завтра то же самое.")
         else:
-            lines.append("🍳 Новые блюда на сегодня.")
+            lines.append("🍳 <b>Готовим сегодня.</b>")
     rows = [[B(f"📖 {r['name']}", f"rv:{r['id']}")] for r in recipes_in(day)]
     rows.append([B("📅 Вся неделя", f"sw:{w['id']}"), B("🛒 Закупки", f"shop:{w['id']}")])
     rows.append([B("⌂ Меню", "menu")])
@@ -427,11 +473,10 @@ def supps_screen():
             for sp in supps]
     rows.append([B("➕ Добавить добавку", "sadd")])
     rows.append([B("‹ Настройки", "settings"), B("⌂ Меню", "menu")])
-    txt = ("💊 Биодобавки\n\n"
-           "Показываются в меню дня рядом с приёмом пищи, к которому привязаны — "
-           "в «Что сегодня» и в утреннем напоминании.")
+    txt = ("💊 <b>Биодобавки</b>\n" + HR + "\n"
+           "<i>Показываются в меню дня рядом с приёмом пищи, к которому привязаны.</i>")
     if not supps:
-        txt += "\n\nПока пусто."
+        txt += "\n\n<i>Пока пусто.</i>"
     return txt, KB(rows)
 
 
@@ -453,7 +498,10 @@ async def cb_supp_view(c: CallbackQuery):
             for i, s in enumerate(SLOTS)]
     rows.append([B("🗑 Удалить", f"sdel:{sid}")])
     rows.append([B("‹ Добавки", "supps"), B("⌂ Меню", "menu")])
-    await safe_edit(c.message, f"💊 {supp_text(sp)}\n\nК каким приёмам пищи привязать:", KB(rows))
+    await safe_edit(c.message,
+                    f"💊 <b>{esc(sp['name'])}</b>"
+                    + (f"\n<i>{esc(sp['dose'])}</i>" if sp["dose"] else "")
+                    + f"\n{HR}\nК каким приёмам пищи привязать:", KB(rows))
     await c.answer()
 
 
@@ -540,14 +588,19 @@ def menu_kb():
 
 def menu_text():
     w = active_plan()
-    cur = f"▶️ Сейчас питаемся по: {w['label']}" if w else "▶️ Текущее меню не выбрано (Настройки → Текущее меню)"
-    return ("🍲 План питания\n\n"
-            "• Что сегодня — меню на день и что готовить\n"
-            "• Расписание — меню по дням и неделям\n"
-            "• Закупки — выбери меню, а в нём собери список покупок\n"
-            "• Рецепты — смотреть и редактировать\n"
-            "• Случайное меню — соберу неделю из уже знакомых блюд\n\n"
-            + cur)
+    d = tznow()
+    head = f"🍲 <b>План питания</b>\n<i>{WEEKDAYS[d.weekday()]}, {d:%d.%m}</i>\n{HR}\n"
+    if w:
+        day = day_for_date(w, d.date())
+        cur = f"▶️ Питаемся по: <b>{esc(w['label'])}</b>"
+        if day:
+            cur += f"\n📅 Сегодня — {esc(day['name'])}"
+        nxt = store.get_week(next_plan_id(w["id"])) if store.get_setting("auto_next", "1") == "1" else None
+        if nxt:
+            cur += f"\n⏭ С понедельника — {esc(nxt['label'])}"
+    else:
+        cur = "▶️ <i>Меню не выбрано</i>\nНастройки → Текущее меню"
+    return head + cur
 
 
 @dp.message(CommandStart())
@@ -698,7 +751,7 @@ async def cmd_status(m: Message):
         if sched and sched.get_jobs() else "нет"
     await del_msg(m.chat.id, m.message_id)
     await show(m.chat.id,
-        "📊 Состояние бота\n\n"
+        "📊 <b>Состояние бота</b>\n" + HR + "\n"
         f"Работает без перерыва: {upstr}\n"
         f"Связь с Telegram: {ago} сек назад\n"
         f"Текущее меню: {w['label'] if w else 'не выбрано'}\n"
@@ -794,10 +847,10 @@ def settings_kb():
     return KB(rows)
 
 
-SETTINGS_TEXT = ("⚙️ Настройки\n\n"
-                 "Количество едоков пересчитывает закупки.\n"
-                 "Текущее меню — то, по которому приходят утренние напоминания.\n"
-                 f"Часовой пояс: {TZ}")
+SETTINGS_TEXT = ("⚙️ <b>Настройки</b>\n" + HR + "\n"
+                 "<i>Количество едоков пересчитывает закупки.\n"
+                 "Текущее меню — то, по которому приходят напоминания.</i>\n\n"
+                 f"🕒 Часовой пояс: <code>{TZ}</code>")
 
 
 @dp.callback_query(F.data == "settings")
@@ -882,22 +935,22 @@ async def cb_sch_day(c: CallbackQuery):
     _, wid, di = c.data.split(":")
     w = store.get_week(wid)
     day = w["days"][int(di)]
-    lines = [f"📅 {w['label']} · {day['name']}", ""]
+    lines = [f"📅 <b>{esc(day['name'])}</b>", f"<i>{esc(w['label'])}</i>", HR, ""]
     rec_btns, seen = [], set()
     sb = supps_by_slot()
     for m in day["meals"]:
         if not m["d"] and m["t"] not in sb:
             continue
-        lines.append(f"• {m['t']}:")
+        lines.append(f"<b>{esc(m['t'])}</b>")
         for d in m["d"]:
-            lines.append(f"   – {d}")
+            lines.append(f"  {dish_line(d)}")
             rid = recipe_for(d)
             if rid and rid not in seen:
                 seen.add(rid)
                 r = store.get_recipe(rid)
                 if r:
                     rec_btns.append([B(f"📖 {r['name']}", f"rv:{rid}")])
-        lines += [f"   💊 {supp_text(sp)}" for sp in sb.get(m["t"], [])]
+        lines += [f"  💊 <i>{esc(supp_text(sp))}</i>" for sp in sb.get(m["t"], [])]
         lines.append("")
     rows = rec_btns + [[B("‹ Дни", f"sw:{wid}"), B("⌂ Меню", "menu")]]
     await safe_edit(c.message, "\n".join(lines).strip(), KB(rows))
@@ -953,12 +1006,13 @@ async def cb_plan_screen(c: CallbackQuery):
     checks = store.checked_set(wid + ":")
     stores = sorted({store_of(it[2], it[0]) for it in shop},
                     key=lambda s: STORE_ORDER.index(s) if s in STORE_ORDER else 99)
-    lines = [f"📋 {w['label']} · {w.get('dates','')}".strip(" ·"), ""]
+    lines = [f"📋 <b>{esc(w['label'])}</b>", f"<i>{esc(w.get('dates',''))}</i>".strip(), HR]
     if w.get("note"):
-        lines += [w["note"], ""]
-    lines += [f"Дней в меню: {len(w.get('days', []))}",
-              f"Позиций в закупке: {len(shop)} · куплено {len(checks)}",
-              "Магазины: " + (", ".join(stores) if stores else "—")]
+        lines += [f"<i>{esc(w['note'])}</i>", ""]
+    lines += [f"Дней в меню: <b>{len(w.get('days', []))}</b>",
+              f"Позиций в закупке: <b>{len(shop)}</b>",
+              bar(len(checks), len(shop)) if shop else "",
+              "", "🏬 " + esc(", ".join(stores) if stores else "—")]
     rows = [[B("🛒 Закупки", f"shop:{wid}")],
             [B("📅 Посмотреть меню", f"sw:{wid}")]]
     if wid.startswith("g"):
@@ -1031,9 +1085,9 @@ async def cb_shop(c: CallbackQuery):
     rows.append([B("↩︎ Сбросить все отметки", f"rs:{wid}:all")])
     rows.append([B("‹ Карточка меню", f"plan:{wid}"), B("⌂ Меню", "menu")])
     done = sum(1 for it in items if it["iid"] in checks)
-    txt = (f"🛒 {w['label']} · {w.get('dates','')}".strip(" ·") +
-           f"\nКуплено {done} из {len(items)} · на {people} чел."
-           "\n\nВыбери, что закупаешь сейчас:")
+    txt = (f"🛒 <b>Закупки</b>\n<i>{esc(w['label'])} · на {people} чел.</i>\n{HR}\n"
+           f"{bar(done, len(items))}\nКуплено <b>{done}</b> из {len(items)}\n\n"
+           "Выбери, что закупаешь сейчас:")
     _last_view[c.from_user.id] = (wid, None)
     await safe_edit(c.message, txt, KB(rows))
     await c.answer()
@@ -1050,13 +1104,13 @@ def render_trip(wid, trip, uid):
     left = [it for it in sel if it["iid"] not in checks]
     shown = left if hide else sel
 
-    head = TRIP_NAME[trip]
-    text = (f"{head}\n{w['label']}\n"
-            f"Осталось {len(left)} из {len(sel)} · на {people} чел.")
+    text = (f"<b>{esc(TRIP_NAME[trip])}</b>\n<i>{esc(w['label'])} · на {people} чел.</i>\n{HR}\n"
+            f"{bar(len(sel) - len(left), len(sel))}\n"
+            f"Осталось <b>{len(left)}</b> из {len(sel)}")
     if trip == "p":
-        text += "\n\nЭти позиции идут с доставкой — закажи за несколько дней."
-    if hide and not left:
-        text += "\n\n🎉 Всё куплено!"
+        text += "\n\n📦 <i>Эти позиции идут с доставкой — закажи за несколько дней.</i>"
+    if not left:
+        text += "\n\n🎉 <b>Всё куплено!</b>"
 
     if by_store:
         shown = sorted(shown, key=lambda it: (
@@ -1159,31 +1213,34 @@ async def cb_text_list(c: CallbackQuery):
     people = store.get_people()
     checks = store.checked_set(wid + ":")
     trips = [1, 2] if t == "all" else [parse_trip(t)]
-    out = [f"🛒 {w['label']} · на {people} чел."]
+    out = [f"🛒 <b>{esc(w['label'])}</b> · на {people} чел.", HR]
     for trip in trips:
         sel = [it for it in items if in_view(it, trip) and it["iid"] not in checks]
         if not sel:
             continue
-        out += ["", TRIP_NAME[trip]]
+        out += ["", f"<b>{esc(TRIP_NAME[trip])}</b>"]
         last = None
         for it in sorted(sel, key=lambda x: (store_of(x["badge"], x["cat"]), x["name"])):
             st = store_of(it["badge"], it["cat"])
             if st != last:
-                out.append(f"  🏬 {st}")
+                out.append(f"🏬 <b>{esc(st)}</b>")
                 last = st
             q = fmtqty(it["qty"], it["unit"], people)
-            out.append(f"  • {it['name']}" + (f" — {q}" if q else ""))
+            out.append(f"  • {esc(it['name'])}" + (f"  <i>{esc(q)}</i>" if q else ""))
     if len(out) == 1:
-        out.append("\nВсё куплено 🎉")
+        out.append("\n🎉 Всё куплено")
     else:
-        out.append("\nМожно переслать этот список кому-то из семьи.")
+        out.append(f"\n<i>Можно переслать этот список кому-то из семьи.</i>")
     await c.answer()
     await adopt_window(c.message)
     chat = c.message.chat.id
     prev = store.get_setting(f"exp:{chat}")
     if prev:
         await del_msg(chat, prev)
-    sent = await bot.send_message(chat, "\n".join(out))
+    parts = chunks(out)
+    for part in parts[:-1]:
+        await bot.send_message(chat, part)
+    sent = await bot.send_message(chat, parts[-1])
     store.set_setting(f"exp:{chat}", sent.message_id)
 
 
@@ -1249,14 +1306,18 @@ async def cb_recs(c: CallbackQuery):
 
 
 def recipe_text(r):
+    head = f"📖 <b>{esc(r['name'])}</b>"
     if r.get("text"):
-        return f"📖 {r['name']}\n\n{r['text']}"
-    lines = [f"📖 {r['name']}", f"Выход: {r.get('out','')}", "", "Ингредиенты:"]
-    lines += [f"• {x}" for x in r.get("ing", [])]
-    lines += ["", "Приготовление:"]
-    lines += [f"{i}. {x}" for i, x in enumerate(r.get("steps", []), 1)]
+        return f"{head}\n{HR}\n{esc(r['text'])}"
+    lines = [head]
+    if r.get("out"):
+        lines.append(f"<i>Выход: {esc(r['out'])}</i>")
+    lines += [HR, "", "<b>Ингредиенты</b>"]
+    lines += [f"  • {esc(x)}" for x in r.get("ing", [])]
+    lines += ["", "<b>Приготовление</b>"]
+    lines += [f"  <b>{i}.</b> {esc(x)}" for i, x in enumerate(r.get("steps", []), 1)]
     if r.get("tips"):
-        lines += ["", "Советы:"] + [f"• {x}" for x in r["tips"]]
+        lines += ["", "<b>Советы</b>"] + [f"  • <i>{esc(x)}</i>" for x in r["tips"]]
     return "\n".join(lines)
 
 
@@ -1418,13 +1479,13 @@ _draft = {}   # черновик сгенерированного меню на 
 
 
 def draft_text(w):
-    lines = [f"🎲 {w['label']} · {w['dates']}", w["note"], ""]
+    lines = [f"🎲 <b>{esc(w['label'])}</b>", f"<i>{esc(w['note'])}</i>", HR, ""]
     for day in w["days"]:
-        lines.append(f"📅 {day['name']}")
+        lines.append(f"<b>{esc(day['name'])}</b>")
         for m in day["meals"]:
-            lines.append(f"   {m['t']}: " + "; ".join(m["d"]))
+            lines.append(f"  <i>{esc(m['t'])}</i>  " + esc("; ".join(m["d"])))
         lines.append("")
-    lines.append(f"Позиций в закупке: {len(w['shop'])}")
+    lines.append(f"{HR}\nПозиций в закупке: <b>{len(w['shop'])}</b>")
     return "\n".join(lines)
 
 
@@ -1438,10 +1499,7 @@ def draft_kb():
 async def cb_generate(c: CallbackQuery):
     w = generate_week()
     _draft[c.from_user.id] = w
-    txt = draft_text(w)
-    if len(txt) > 3900:
-        txt = txt[:3900] + "…"
-    await safe_edit(c.message, txt, draft_kb())
+    await safe_edit(c.message, clip(draft_text(w)), draft_kb())
     await c.answer("Собрал меню")
 
 
@@ -1528,14 +1586,15 @@ async def remind_evening():
     if not new_block:
         return                      # завтра доедаем сегодняшнее — готовить нечего
     recs = recipes_in(d_tom)
-    lines = [f"🌙 Завтра — {d_tom['name']}", "", "Начинается новый блок: блюда меняются, готовим заново."]
+    lines = [f"🌙 <b>Завтра — {esc(d_tom['name'])}</b>", HR,
+             "<i>Новый блок: блюда меняются, готовим заново.</i>"]
     if recs:
-        lines.append("Готовим сами: " + ", ".join(r["name"] for r in recs))
-        lines.append("Загляни в рецепт — что-то может понадобиться разморозить или замочить заранее.")
+        lines.append("\n🍳 <b>Готовим сами:</b> " + esc(", ".join(r["name"] for r in recs)))
+        lines.append("<i>Загляни в рецепт — что-то может понадобиться разморозить заранее.</i>")
     lines.append("")
     for m in d_tom["meals"]:
         if m["d"]:
-            lines.append(f"• {m['t']}: " + "; ".join(m["d"]))
+            lines.append(f"<b>{esc(m['t'])}</b>  " + esc("; ".join(m["d"])))
     rows = [[B(f"📖 {r['name']}", f"rv:{r['id']}")] for r in recs]
     rows.append([B("🛒 Закупки", f"shop:{w['id']}"), B("⌂ Меню", "menu")])
     for cid in store.all_chats():
@@ -1547,19 +1606,19 @@ async def remind_evening():
 
 async def remind_shop(kind):
     w = active_plan()
-    base = {"t1": "🛒 Пора сделать Закуп 1 (начало недели): бакалея + свежее на первую половину.",
-            "t2": "🛒 Пора сделать Закуп 2 (середина недели): свежее на вторую половину. "
-                  "И свежий хлеб к выходным!"}[kind]
+    base = {"t1": "🛒 <b>Пора сделать Закуп 1</b>\n<i>Бакалея на неделю + свежее на первую половину.</i>",
+            "t2": "🛒 <b>Пора сделать Закуп 2</b>\n<i>Свежее на вторую половину. И свежий хлеб к выходным!</i>"}[kind]
     kb = KB([[B("⌂ Меню", "menu")]])
     if w:
         trip = 1 if kind == "t1" else 2
         shop = w.get("shop", [])
         checks = store.checked_set(w["id"] + ":")
-        left = [i for i, it in enumerate(shop)
-                if (it[6] if len(it) > 6 else 1) == trip and f"{w['id']}:{i}" not in checks]
+        shop_trip = [i for i, it in enumerate(shop) if (it[6] if len(it) > 6 else 1) == trip]
+        left = [i for i in shop_trip if f"{w['id']}:{i}" not in checks]
         if not left:
             return                      # всё уже куплено — не тревожим
-        base += f"\n\nМеню: {w['label']}\nОсталось купить: {len(left)} позиций."
+        base += (f"\n{HR}\n{esc(w['label'])}\n{bar(len(shop_trip) - len(left), len(shop_trip))}"
+                 f"\nОсталось купить: <b>{len(left)}</b>")
         kb = KB([[B("🛒 Открыть список", f"shop:{w['id']}")], [B("⌂ Меню", "menu")]])
     for cid in store.all_chats():
         try:
