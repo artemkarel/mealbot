@@ -2,7 +2,7 @@
 """Телеграм-бот плана питания. У каждого своё: меню, закупки с галочками,
 число едоков, биодобавки и напоминания. Рецепты и планы — общие,
 обновляются файлом plan.json. Без внешних ИИ-сервисов."""
-import os, io, math, time, random, asyncio, logging, subprocess
+import os, io, re, math, time, random, asyncio, logging, subprocess
 from html import escape as esc
 from datetime import datetime, date, timedelta
 from zoneinfo import ZoneInfo
@@ -288,6 +288,66 @@ def recipes_in(day):
     return out
 
 
+AMOUNT_RE = re.compile(r"—\s*(\d+)(?:\s*[–-]\s*\d+)?\s*(г|мл|шт)(?![а-я])")
+SKIP_COOK = re.compile(r"^(Вода|Кофе|Зелёный чай|Ромашковый чай)")
+
+
+def cook_plan(w, day, people, uid):
+    """Что и сколько готовить: порции × едоки × дни блока × повторы за день."""
+    days_list = w.get("days", [])
+    i = next((k for k, d in enumerate(days_list) if d["name"] == day["name"]), 0)
+    repeat = meals_equal(day, days_list[i - 1]) if i > 0 else False
+    days = 1
+    while i + days < len(days_list) and meals_equal(day, days_list[i + days]):
+        days += 1
+
+    table = store.dish_ingredients()
+    agg = {}
+    for m in day["meals"]:
+        for dish in m["d"]:
+            if SKIP_COOK.match(dish):          # заваривается по чашке
+                continue
+            ing = table.get(dish) or []
+            dry = raw = pieces = 0
+            for cat, name, badge, unit, qty, note in ing:
+                if qty is None:
+                    continue
+                if unit == "шт":
+                    pieces += qty
+                elif unit == "г":
+                    if cat == "Крупы и лапша":
+                        dry += qty                       # варим из сухого
+                    elif "сырой вес" in (note or ""):
+                        raw += qty                       # усохнет при готовке
+            am = AMOUNT_RE.search(dish)
+            if not am and not dry and not raw and not pieces:
+                continue
+            key = dish.split(" — ")[0]
+            a = agg.setdefault(key, {"rid": recipe_for(dish), "am": am, "dry": 0, "raw": 0,
+                                     "pieces": 0, "n": 0, "slots": []})
+            a["n"] += 1
+            a["dry"] += dry
+            a["raw"] += raw
+            a["pieces"] += pieces
+            if m["t"] not in a["slots"]:
+                a["slots"].append(m["t"])
+
+    items = []
+    for name, a in agg.items():
+        k = people * days * a["n"]
+        by_piece = a["pieces"] > 0 and (not a["am"] or a["am"].group(2) != "шт")
+        if by_piece:
+            total, unit = math.ceil(a["pieces"] * people * days), "шт"
+        elif a["am"]:
+            total, unit = int(a["am"].group(1)) * k, a["am"].group(2)
+        else:
+            total, unit = 0, ""
+        items.append({"name": name, "total": total, "unit": unit, "rid": a["rid"],
+                      "dry": round(a["dry"] * people * days / 5) * 5,
+                      "raw": round(a["raw"] * people * days / 10) * 10})
+    return {"days": days, "repeat": repeat, "items": items}
+
+
 def day_card(w, d, head, uid):
     """Текст с меню на дату d + кнопки рецептов."""
     day = day_for_date(w, d, uid)
@@ -308,11 +368,26 @@ def day_card(w, d, head, uid):
     if same_as_yesterday:
         lines.append("♻️ <i>Сегодня то же, что вчера — готовить заново не нужно.</i>")
     else:
-        nxt = day_for_date(w, d + timedelta(days=1), uid)
-        if meals_equal(day, nxt):
-            lines.append("🍳 <b>Готовим сегодня</b> — сразу на два дня, завтра то же самое.")
-        else:
-            lines.append("🍳 <b>Готовим сегодня.</b>")
+        people = store.get_people(uid)
+        c = cook_plan(w, day, people, uid)
+        head_cook = ("🍳 <b>Что приготовить</b>"
+                     + (f" — сразу на {c['days']} дня" if c["days"] > 1 else "")
+                     + f"\n<i>на {people} чел.</i>")
+        lines.append(head_cook)
+        for it in c["items"]:
+            row = f"  • {esc(it['name'])}"
+            if it["total"]:
+                row += f" — <b>{it['total']} {it['unit']}</b>"
+            hints = []
+            if it["dry"]:
+                hints.append(f"сварить {it['dry']} г сухой")
+            if it["raw"]:
+                hints.append(f"взять {it['raw']} г сырого")
+            if it["rid"]:
+                hints.append("по рецепту")
+            if hints:
+                row += f"\n     <i>{esc(', '.join(hints))}</i>"
+            lines.append(row)
     rows = [[B(f"📖 {r['name']}", f"rv:{r['id']}")] for r in recipes_in(day)]
     rows.append([B("📅 Вся неделя", f"sw:{w['id']}"), B("🛒 Закупки", f"shop:{w['id']}")])
     rows.append([B("⌂ Меню", "menu")])
