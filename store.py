@@ -84,6 +84,9 @@ def init():
                 sid INTEGER PRIMARY KEY AUTOINCREMENT,
                 uid INTEGER DEFAULT 0,
                 name TEXT, dose TEXT, slots TEXT, timing TEXT DEFAULT '');
+            CREATE TABLE IF NOT EXISTS cafe(
+                cid INTEGER PRIMARY KEY AUTOINCREMENT,
+                uid INTEGER, name TEXT, place TEXT, slot TEXT);
             CREATE TABLE IF NOT EXISTS chats(chat_id INTEGER PRIMARY KEY);
             """
         )
@@ -324,6 +327,25 @@ def save_recipe(r):
     with conn() as c:
         c.execute("INSERT INTO recipes(rid,data) VALUES(?,?) ON CONFLICT(rid) DO UPDATE SET data=excluded.data",
                   (r["id"], json.dumps(r, ensure_ascii=False)))
+
+
+# ---- кафе: что и где можно поесть вне дома ----
+def all_cafe(uid):
+    with conn() as c:
+        return [dict(r) for r in c.execute(
+            "SELECT cid,name,place,slot FROM cafe WHERE uid=? ORDER BY cid", (int(uid),)).fetchall()]
+
+
+def add_cafe(uid, name, place, slot):
+    with conn() as c:
+        cur = c.execute("INSERT INTO cafe(uid,name,place,slot) VALUES(?,?,?,?)",
+                        (int(uid), name, place, slot))
+        return cur.lastrowid
+
+
+def del_cafe(uid, cid):
+    with conn() as c:
+        c.execute("DELETE FROM cafe WHERE uid=? AND cid=?", (int(uid), int(cid)))
 
 
 # ---- chats (for reminders) ----

@@ -298,10 +298,17 @@ def cook_plan(w, day, people, uid, force_days=None):
     days_list = w.get("days", [])
     i = next((k for k, d in enumerate(days_list) if d["name"] == day["name"]), 0)
     repeat = meals_equal(day, days_list[i - 1]) if i > 0 else False
-    block = 1
+    def span_of(dish):
+        """Сколько дней подряд, начиная с сегодня, встречается это блюдо."""
+        n = 0
+        while i + n < len(days_list) and any(dish in m["d"] for m in days_list[i + n]["meals"]):
+            n += 1
+        return max(1, n)
+
+    block = 1                       # сколько дней подряд день целиком повторяется
     while i + block < len(days_list) and meals_equal(day, days_list[i + block]):
         block += 1
-    days = force_days or block
+    multi = any(span_of(x) > 1 for m in day["meals"] for x in m["d"])
 
     table = store.dish_ingredients()
     agg = {}
@@ -325,8 +332,10 @@ def cook_plan(w, day, people, uid, force_days=None):
             if not am and not dry and not raw and not pieces:
                 continue
             key = dish.split(" — ")[0]
+            span = min(span_of(dish), force_days) if force_days else span_of(dish)
             a = agg.setdefault(key, {"rid": recipe_for(dish), "am": am, "dry": 0, "raw": 0,
-                                     "pieces": 0, "n": 0, "slots": []})
+                                     "pieces": 0, "n": 0, "slots": [], "span": span})
+            a["span"] = span
             a["n"] += 1
             a["dry"] += dry
             a["raw"] += raw
@@ -336,6 +345,7 @@ def cook_plan(w, day, people, uid, force_days=None):
 
     items = []
     for name, a in agg.items():
+        days = a["span"]                       # у каждого блюда свой горизонт
         k = people * days * a["n"]
         by_piece = a["pieces"] > 0 and (not a["am"] or a["am"].group(2) != "шт")
         if by_piece:
@@ -350,7 +360,8 @@ def cook_plan(w, day, people, uid, force_days=None):
                       "base_unit": a["am"].group(2) if a["am"] else "",   # единица из меню
                       "dry": round(a["dry"] * people * days / 5) * 5,
                       "raw": round(a["raw"] * people * days / 10) * 10})
-    return {"days": days, "block": block, "repeat": repeat, "items": items}
+    return {"days": min(block, force_days) if force_days else block,
+            "block": block, "multi": multi, "repeat": repeat, "items": items}
 
 
 def day_card(w, d, head, uid, cook_days=None):
@@ -378,9 +389,13 @@ def day_card(w, d, head, uid, cook_days=None):
         lines.append("♻️ <i>Сегодня то же, что вчера — готовить заново не нужно.</i>")
         cook_rows = [[B("🍳 Приготовить на сегодня", f"cook:1:{shift}")]]
     else:
-        head_cook = ("🍳 <b>Что приготовить</b>"
-                     + (f" — сразу на {c['days']} дня" if c["days"] > 1 else " — на сегодня")
-                     + f"\n<i>на {people} чел.</i>")
+        if cook_days == 1:
+            when = " — только на сегодня"
+        elif c["block"] > 1:
+            when = f" — сразу на {c['block']} дня"
+        else:
+            when = " — как в плане"
+        head_cook = f"🍳 <b>Что приготовить</b>{when}\n<i>на {people} чел.</i>"
         lines.append(head_cook)
         for it in c["items"]:
             row = f"  • {esc(it['name'])}"
@@ -397,10 +412,10 @@ def day_card(w, d, head, uid, cook_days=None):
                 hints.append("по рецепту")
             row += f"\n     <i>{esc(' · '.join(hints))}</i>"
             lines.append(row)
-        if c["block"] > 1:                     # можно готовить не на весь блок сразу
-            cook_rows = [[B(("✓ " if c["days"] == 1 else "") + "На сегодня", f"cook:1:{shift}"),
-                          B(("✓ " if c["days"] > 1 else "") + f"На {c['block']} дня",
-                            f"cook:{c['block']}:{shift}")]]
+        if c["multi"]:                         # что-то готовится не на один день
+            other = f"На {c['block']} дня" if c["block"] > 1 else "Как в плане"
+            cook_rows = [[B(("✓ " if cook_days == 1 else "") + "На сегодня", f"cook:1:{shift}"),
+                          B(("✓ " if cook_days != 1 else "") + other, f"cook:0:{shift}")]]
     rows = cook_rows + [[B(f"📖 {r['name']}", f"rv:{r['id']}")] for r in recipes_in(day)]
     rows.append([B("📅 Вся неделя", f"sw:{w['id']}"), B("🛒 Закупки", f"shop:{w['id']}")])
     rows.append([B("⌂ Меню", "menu")])
@@ -442,7 +457,7 @@ async def cb_cook(c: CallbackQuery):
         return await c.answer("Меню не выбрано", show_alert=True)
     d = tznow().date() + timedelta(days=int(shift))
     head = "🍽 Сегодня" if shift == "0" else ("🌙 Завтра" if shift == "1" else "📅 День")
-    txt, kb = day_card(w, d, head, uid, int(days))
+    txt, kb = day_card(w, d, head, uid, int(days) or None)
     if txt:
         await safe_edit(c.message, txt, kb)
     await c.answer()
