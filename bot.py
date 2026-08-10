@@ -12,7 +12,8 @@ from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 from aiogram.filters import Command, CommandStart
 from aiogram.types import (Message, CallbackQuery, InlineKeyboardMarkup, InlineKeyboardButton,
-                           BotCommand, BotCommandScopeDefault, BotCommandScopeChat, ErrorEvent)
+                           BotCommand, BotCommandScopeDefault, BotCommandScopeChat, ErrorEvent,
+                           WebAppInfo, MenuButtonWebApp, MenuButtonCommands)
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.fsm.storage.memory import MemoryStorage
@@ -25,6 +26,7 @@ logging.basicConfig(level=logging.INFO)
 
 BOT_TOKEN = os.environ["BOT_TOKEN"]
 TZ = os.environ.get("TZ", "Europe/Samara")   # Ижевск, UTC+4
+WEBAPP_URL = os.environ.get("WEBAPP_URL", "").strip()   # адрес Mini App, если он поднят
 def id_set(name):
     """Список Telegram ID из переменной окружения. Мусор пропускаем, а не падаем."""
     out = set()
@@ -635,6 +637,9 @@ async def auth_mw(handler, event, data):
 # ---------- menu ----------
 def menu_kb(uid=None):
     rows = []
+    if WEBAPP_URL:
+        rows.append([InlineKeyboardButton(text="📱 Открыть приложение",
+                                          web_app=WebAppInfo(url=WEBAPP_URL))])
     if uid is not None and not active_plan(uid):
         rows.append([B("▶️ Выбрать меню", "actsel")])
     return KB(rows + [
@@ -773,6 +778,12 @@ ADMIN_CMDS = PUBLIC_CMDS + [
 
 async def setup_commands():
     """Обычные видят короткий список команд, владелец — полный."""
+    try:
+        await bot.set_chat_menu_button(
+            menu_button=MenuButtonWebApp(text="Приложение", web_app=WebAppInfo(url=WEBAPP_URL))
+            if WEBAPP_URL else MenuButtonCommands())
+    except Exception:
+        logging.warning("не смог задать кнопку меню")
     try:
         await bot.set_my_commands(PUBLIC_CMDS, scope=BotCommandScopeDefault())
     except Exception:
@@ -1882,6 +1893,11 @@ async def main():
     sched.start()
     reschedule()
     await setup_commands()
+    try:                                   # веб-часть для Mini App
+        import webapp
+        await webapp.start()
+    except Exception:
+        logging.exception("Mini App API не запустился — бот работает без него")
     asyncio.create_task(healthcheck())
     logging.info("Bot started, TZ=%s, jobs=%s", TZ, [j.id for j in sched.get_jobs()])
     await dp.start_polling(bot)
