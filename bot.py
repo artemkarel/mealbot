@@ -292,14 +292,16 @@ AMOUNT_RE = re.compile(r"—\s*(\d+)(?:\s*[–-]\s*\d+)?\s*(г|мл|шт)(?![а-
 SKIP_COOK = re.compile(r"^(Вода|Кофе|Зелёный чай|Ромашковый чай)")
 
 
-def cook_plan(w, day, people, uid):
-    """Что и сколько готовить: порции × едоки × дни блока × повторы за день."""
+def cook_plan(w, day, people, uid, force_days=None):
+    """Что и сколько готовить: порции × едоки × дни × повторы за день.
+    force_days — готовим не на весь блок, а на указанное число дней."""
     days_list = w.get("days", [])
     i = next((k for k, d in enumerate(days_list) if d["name"] == day["name"]), 0)
     repeat = meals_equal(day, days_list[i - 1]) if i > 0 else False
-    days = 1
-    while i + days < len(days_list) and meals_equal(day, days_list[i + days]):
-        days += 1
+    block = 1
+    while i + block < len(days_list) and meals_equal(day, days_list[i + block]):
+        block += 1
+    days = force_days or block
 
     table = store.dish_ingredients()
     agg = {}
@@ -345,10 +347,10 @@ def cook_plan(w, day, people, uid):
         items.append({"name": name, "total": total, "unit": unit, "rid": a["rid"],
                       "dry": round(a["dry"] * people * days / 5) * 5,
                       "raw": round(a["raw"] * people * days / 10) * 10})
-    return {"days": days, "repeat": repeat, "items": items}
+    return {"days": days, "block": block, "repeat": repeat, "items": items}
 
 
-def day_card(w, d, head, uid):
+def day_card(w, d, head, uid, cook_days=None):
     """Текст с меню на дату d + кнопки рецептов."""
     day = day_for_date(w, d, uid)
     if not day:
@@ -365,13 +367,16 @@ def day_card(w, d, head, uid):
         lines += [f"  {dish_line(x)}" for x in m["d"]]
         lines += [f"  💊 <i>{esc(supp_text(sp))}</i>" for sp in sb.get(m["t"], [])]
         lines.append("")
-    if same_as_yesterday:
+    people = store.get_people(uid)
+    c = cook_plan(w, day, people, uid, cook_days)
+    shift = (d - tznow().date()).days
+    cook_rows = []
+    if same_as_yesterday and cook_days is None:
         lines.append("♻️ <i>Сегодня то же, что вчера — готовить заново не нужно.</i>")
+        cook_rows = [[B("🍳 Приготовить на сегодня", f"cook:1:{shift}")]]
     else:
-        people = store.get_people(uid)
-        c = cook_plan(w, day, people, uid)
         head_cook = ("🍳 <b>Что приготовить</b>"
-                     + (f" — сразу на {c['days']} дня" if c["days"] > 1 else "")
+                     + (f" — сразу на {c['days']} дня" if c["days"] > 1 else " — на сегодня")
                      + f"\n<i>на {people} чел.</i>")
         lines.append(head_cook)
         for it in c["items"]:
@@ -388,7 +393,11 @@ def day_card(w, d, head, uid):
             if hints:
                 row += f"\n     <i>{esc(', '.join(hints))}</i>"
             lines.append(row)
-    rows = [[B(f"📖 {r['name']}", f"rv:{r['id']}")] for r in recipes_in(day)]
+        if c["block"] > 1:                     # можно готовить не на весь блок сразу
+            cook_rows = [[B(("✓ " if c["days"] == 1 else "") + "На сегодня", f"cook:1:{shift}"),
+                          B(("✓ " if c["days"] > 1 else "") + f"На {c['block']} дня",
+                            f"cook:{c['block']}:{shift}")]]
+    rows = cook_rows + [[B(f"📖 {r['name']}", f"rv:{r['id']}")] for r in recipes_in(day)]
     rows.append([B("📅 Вся неделя", f"sw:{w['id']}"), B("🛒 Закупки", f"shop:{w['id']}")])
     rows.append([B("⌂ Меню", "menu")])
     return "\n".join(lines).strip(), KB(rows)
@@ -418,6 +427,21 @@ async def cmd_tomorrow(m: Message):
     await del_msg(m.chat.id, m.message_id)
     if not await send_day(m.chat.id, "🌙 Завтра", 1, m.from_user.id):
         await show(m.chat.id, "Сначала выбери текущее меню.", KB([[B("▶️ Выбрать меню", "actsel")]]))
+
+
+@dp.callback_query(F.data.startswith("cook:"))
+async def cb_cook(c: CallbackQuery):
+    _, days, shift = c.data.split(":")
+    uid = c.from_user.id
+    w = active_plan(uid)
+    if not w:
+        return await c.answer("Меню не выбрано", show_alert=True)
+    d = tznow().date() + timedelta(days=int(shift))
+    head = "🍽 Сегодня" if shift == "0" else ("🌙 Завтра" if shift == "1" else "📅 День")
+    txt, kb = day_card(w, d, head, uid, int(days))
+    if txt:
+        await safe_edit(c.message, txt, kb)
+    await c.answer()
 
 
 @dp.callback_query(F.data.in_({"today", "tomorrow"}))
