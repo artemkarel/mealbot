@@ -171,6 +171,20 @@ h1,h2,h3,.day-name,.planbar-t,.trip-n{font-family:'Literata',Georgia,serif;font-
 .slot-b.t{border-style:dashed}
 .hdr{position:relative}
 body{margin:0;background:#EEF1EC}
+
+/* «что приготовить» */
+.cook{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--brand);border-radius:10px;padding:12px 14px;margin-bottom:10px}
+.cook-h{font-family:'Literata',Georgia,serif;font-size:15px;font-weight:600;margin-bottom:8px;display:flex;justify-content:space-between;align-items:baseline;gap:8px}
+.cook-sub{font-family:'Golos Text',sans-serif;font-size:11.5px;color:var(--muted);font-weight:400;white-space:nowrap}
+.cook-row{display:flex;justify-content:space-between;align-items:center;gap:12px;padding:8px 0;border-top:1px solid var(--line);width:100%;text-align:left;background:none;border-left:none;border-right:none;border-bottom:none;font-family:inherit;cursor:default}
+.cook-rec{cursor:pointer}
+.cook-n{font-size:14px;color:var(--ink);min-width:0}
+.cook-d{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+.cook-q{text-align:right;white-space:nowrap}
+.cook-q b{font-size:14px}
+.cook-u{font-size:10.5px;color:var(--muted);margin-left:4px}
+.cook-out{display:block;font-size:11px;color:var(--muted);margin-top:1px}
+.cook-link{font-size:12.5px;color:var(--brand)}
 </style>
 </head>
 <body>
@@ -239,6 +253,31 @@ async function api(path, payload) {
   });
   if (!r.ok) throw new Error(r.status === 401 ? "Не удалось подтвердить, что это ты. Открой приложение из бота." : "Сервер недоступен");
   return r.json();
+}
+
+/* ---------- сколько варить ---------- */
+function parseGrams(dish) {              // «Отварная гречка — 180 г» -> 180
+  const m = dish.match(/—\s*(\d+)(?:\s*[–-]\s*\d+)?\s*г(?![а-я])/);
+  return m ? parseInt(m[1], 10) : 0;
+}
+function cookPlan(plan, day, people, table) {
+  const i = plan.days.findIndex(d => d.name === day.name);
+  const repeat = sameMeals(day, plan.days[i-1]);
+  let days = 1;                          // на сколько дней готовим за раз
+  while (plan.days[i+days] && sameMeals(day, plan.days[i+days])) days++;
+  const agg = new Map();
+  day.meals.forEach(m => m.d.forEach(dish => {
+    (table[dish] || []).forEach(([cat, name, badge, unit, qty]) => {
+      if (cat !== "Крупы и лапша" || unit !== "г" || !qty) return;   // варим только крупы
+      if (!agg.has(name)) agg.set(name, {name, dry:0, cooked:0, dishes:new Set()});
+      const a = agg.get(name);
+      a.dry += qty * people * days;
+      a.cooked += parseGrams(dish) * people * days;
+      a.dishes.add(splitDish(dish)[0]);
+    });
+  }));
+  const recipes = [...new Set(day.meals.flatMap(m => m.d.map(recipeIdFor)).filter(Boolean))];
+  return { days, repeat, items: [...agg.values()], recipes };
 }
 
 /* ---------- случайное меню ---------- */
@@ -355,6 +394,7 @@ function App() {
 
       <main class="main">
         ${tab==="today" && html`<${Today} plan=${active} day=${today} supps=${st.user.supps}
+            people=${people} table=${st.plan.dish_ingredients} recipes=${st.plan.recipes}
             onRecipe=${setOpenRec} onPick=${() => setSheet("settings")}/>`}
         ${tab==="menu" && html`<${Menu} plans=${plans} activeId=${st.user.active} supps=${st.user.supps}
             onActivate=${wid => act({action:"active", wid, today:new Date().toISOString().slice(0,10)})}
@@ -374,22 +414,39 @@ function App() {
 }
 
 /* ---------- сегодня ---------- */
-function Today({ plan, day, supps, onRecipe, onPick }) {
+function Today({ plan, day, supps, people, table, recipes, onRecipe, onPick }) {
   if (!plan || !day) return html`<div class="empty"><p>Меню на сегодня не выбрано.</p>
     <button class="btn" onClick=${onPick}>Выбрать меню</button></div>`;
-  const i = plan.days.findIndex(d => d.name === day.name);
-  const repeat = sameMeals(day, plan.days[i-1]);
-  const two = !repeat && sameMeals(day, plan.days[i+1]);
-  const rIds = [...new Set(day.meals.flatMap(m => m.d.map(recipeIdFor)).filter(Boolean))];
+  const c = cookPlan(plan, day, people, table);
   return html`<section>
     <div class="stamp-row">
-      <span class=${"stamp " + (repeat ? "stamp-keep" : "stamp-cook")}>
-        ${repeat ? "Готовить не нужно" : two ? "Готовим на два дня" : "Готовим сегодня"}</span>
+      <span class=${"stamp " + (c.repeat ? "stamp-keep" : "stamp-cook")}>
+        ${c.repeat ? "Готовить не нужно" : c.days > 1 ? `Готовим на ${c.days} дня` : "Готовим сегодня"}</span>
       <span class="stamp-note">${plan.label}</span>
     </div>
+
+    ${!c.repeat && (c.items.length > 0 || c.recipes.length > 0) && html`
+      <div class="cook">
+        <div class="cook-h">Что приготовить${c.days > 1 ? ` — сразу на ${c.days} дня` : ""}
+          <span class="cook-sub">на ${people} чел.</span></div>
+        ${c.items.map(it => html`<div class="cook-row">
+          <div class="cook-n">${it.name}
+            <span class="cook-d">${[...it.dishes].join(", ")}</span></div>
+          <div class="cook-q">
+            <b class="mono">${Math.round(it.dry/10)*10} г</b><span class="cook-u">сухой</span>
+            ${it.cooked > 0 && html`<span class="cook-out mono">≈ ${Math.round(it.cooked/10)*10} г готовой</span>`}
+          </div>
+        </div>`)}
+        ${c.recipes.map(id => {
+          const r = recipes.find(x => x.id === id);
+          return html`<button class="cook-row cook-rec" onClick=${() => onRecipe(id)}>
+            <div class="cook-n">${r ? r.name : "Рецепт"}<span class="cook-d">готовим по рецепту</span></div>
+            <div class="cook-q"><span class="cook-link">открыть →</span></div>
+          </button>`;
+        })}
+      </div>`}
+
     <${DayCard} day=${day} supps=${supps} onRecipe=${onRecipe} big=${true}/>
-    ${rIds.length > 0 && html`<div class="rec-links">${rIds.map(id =>
-      html`<button class="btn btn-ghost" onClick=${() => onRecipe(id)}>Рецепт</button>`)}</div>`}
   </section>`;
 }
 
@@ -445,9 +502,7 @@ function Menu({ plans, activeId, supps, onActivate, onRecipe, onGenerate }) {
       <div class=${"block" + (block.length>1 ? " block-pair" : "")} style=${{"--c":plan.accent}}>
         ${block.length>1 && html`<div class="block-rail"><span>готовим один раз</span></div>`}
         <div class="block-days">
-          ${block.map((d,j) => j===0
-            ? html`<${DayCard} day=${d} supps=${supps} onRecipe=${onRecipe}/>`
-            : html`<div class="repeat">${d.name} — то же самое</div>`)}
+          ${block.map(d => html`<${DayCard} day=${d} supps=${supps} onRecipe=${onRecipe}/>`)}
         </div></div>`)}
   </section>`;
 }
