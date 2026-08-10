@@ -814,7 +814,8 @@ def menu_text(uid):
 
 
 @dp.message(CommandStart())
-async def start(m: Message):
+async def start(m: Message, state: FSMContext):
+    await state.clear()
     uid = m.from_user.id
     known = m.chat.id in store.all_chats()
     store.add_chat(m.chat.id)
@@ -825,7 +826,8 @@ async def start(m: Message):
 
 
 @dp.message(Command("menu"))
-async def menu_cmd(m: Message):
+async def menu_cmd(m: Message, state: FSMContext):
+    await state.clear()
     await del_msg(m.chat.id, m.message_id)
     await show(m.chat.id, menu_text(m.from_user.id), menu_kb(m.from_user.id))
 
@@ -1873,6 +1875,16 @@ async def on_document(m: Message):
     except Exception as e:
         logging.exception("replace plan")
         await show(m.chat.id, f"Не получилось обновить план: {e}", KB([[B("⌂ Меню", "menu")]]))
+
+
+# ---------- всё остальное ----------
+@dp.message()
+async def fallback(m: Message, state: FSMContext):
+    """Непонятное сообщение убираем и показываем главный экран."""
+    await state.clear()
+    store.add_chat(m.chat.id)
+    await del_msg(m.chat.id, m.message_id)
+    await show(m.chat.id, menu_text(m.from_user.id), menu_kb(m.from_user.id))
 
 
 # ---------- напоминания (личные у каждого) ----------
