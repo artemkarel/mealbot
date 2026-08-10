@@ -828,7 +828,7 @@ def menu_text(uid):
     checks = store.checked_set(uid, w["id"] + ":")
     for trip in (1, 2):
         sel = [it for it in items if in_view(it, trip)]
-        left = [it for it in sel if it["iid"] not in checks]
+        left = [it for it in sel if it["iid"] not in checks and not it["covered"]]
         if sel and left:
             name = TRIP_SHORT[trip].split(" ", 1)[1]      # без цветного кружка
             lines.append(f"🛒 {name}: осталось {len(left)} из {len(sel)}")
@@ -1502,6 +1502,17 @@ _hide_done = {}     # скрывать купленное
 _last_view = {}     # (wid, trip) — куда возвращаться после нажатий
 
 
+def day_bought(uid, w):
+    """Что уже куплено точечно на отдельные дни — вычтем из недельного."""
+    checks = store.checked_set(uid, w["id"] + ":")
+    acc = {}
+    for di in range(len(w.get("days", []))):
+        for it in day_shop(w, di, 1):
+            if it["iid"] in checks and it["qty"]:
+                acc[it["name"]] = round(acc.get(it["name"], 0) + it["qty"], 2)
+    return acc
+
+
 def shop_items(uid, wid):
     """Все позиции меню + свои пункты, в одном виде."""
     w = store.get_week(wid)
@@ -1512,9 +1523,20 @@ def shop_items(uid, wid):
         items.append({"iid": f"{wid}:{i}", "cat": it[0], "name": it[1], "badge": it[2],
                       "unit": it[3], "qty": it[4], "note": it[5],
                       "trip": it[6] if len(it) > 6 else 1, "eid": None})
+    pool = day_bought(uid, w)
+    for it in sorted(items, key=lambda x: x["trip"]):
+        have = pool.get(it["name"], 0)
+        it["paid"], it["left"], it["covered"] = 0, it["qty"], False
+        if it["qty"] and have:
+            take = min(have, it["qty"])
+            pool[it["name"]] = round(have - take, 2)
+            it["paid"] = take
+            it["left"] = round(it["qty"] - take, 2)
+            it["covered"] = it["left"] <= 0.001
     for e in store.all_extras(uid, wid):
         items.append({"iid": f"{wid}:x{e['eid']}", "cat": "Своё", "name": e["name"], "badge": "",
-                      "unit": "", "qty": None, "note": "", "trip": e["trip"], "eid": e["eid"]})
+                      "unit": "", "qty": None, "left": None, "note": "", "paid": 0,
+                      "covered": False, "trip": e["trip"], "eid": e["eid"]})
     return w, items
 
 
@@ -1525,6 +1547,88 @@ def in_view(it, trip):
 
 
 BTN_WIDTH = 32          # столько символов реально помещается в кнопку на телефоне
+
+
+def day_shop(w, day_idx, people):
+    """Что купить ровно на один день: продукты со сложенными количествами."""
+    day = (w.get("days") or [None] * 9)[day_idx] if day_idx < len(w.get("days", [])) else None
+    if not day:
+        return []
+    table = store.dish_ingredients()
+    agg = {}
+    for m in day["meals"]:
+        for dish in m["d"]:
+            for cat, name, badge, unit, qty, note in table.get(dish, []):
+                if qty is None:
+                    continue
+                k = (name, unit)
+                if k not in agg:
+                    agg[k] = {"cat": cat, "name": name, "badge": badge,
+                              "unit": unit, "qty": qty, "note": note}
+                else:
+                    agg[k]["qty"] = round(agg[k]["qty"] + qty, 2)
+    order = ["Крупы и лапша", "Хлеб и выпечка", "Молочное / замена, сыр",
+             "Козье молочное, яйца", "Рыба, мясо, морепродукты", "Рыба, мясо, яйца",
+             "Овощи, фрукты, зелень", "Готовое, напитки, бакалея"]
+    rank = lambda c: order.index(c) if c in order else 99
+    items = sorted(agg.values(), key=lambda x: (rank(x["cat"]), x["name"]))
+    for i, it in enumerate(items):
+        it["iid"] = f"{w['id']}:d{day_idx}-{i}"
+    return items
+
+
+@dp.callback_query(F.data.startswith("day:"))
+async def cb_day_pick(c: CallbackQuery):
+    """Выбор дня для точечной докупки."""
+    wid = c.data.split(":", 1)[1]
+    w = store.get_week(wid)
+    if not w:
+        return await c.answer("Меню не найдено", show_alert=True)
+    rows = [[B(d["name"], f"dsh:{wid}:{i}")] for i, d in enumerate(w.get("days", []))]
+    rows.append([B("‹ Заходы", f"shop:{wid}"), B("⌂ Меню", "menu")])
+    await safe_edit(c.message,
+                    "📅 <b>Закупка на один день</b>\n"
+                    f"<i>{esc(w['label'])}</i>\n\n"
+                    "<i>Пригодится, если нужно докупить точечно. Отметки здесь свои "
+                    "и не влияют на недельные заходы.</i>", KB(rows))
+    await c.answer()
+
+
+async def open_day_shop(c: CallbackQuery, wid, di):
+    uid = c.from_user.id
+    w = store.get_week(wid)
+    if not w:
+        return await c.answer("Меню не найдено", show_alert=True)
+    people = store.get_people(uid)
+    items = day_shop(w, int(di), people)
+    checks = store.checked_set(uid, wid + ":")
+    # продукт может быть в обоих заходах — считаем купленным, если отмечен хоть где-то
+    week_done = {it["name"] for it in shop_items(uid, wid)[1] if it["iid"] in checks}
+    left = sum(1 for it in items if it["iid"] not in checks)
+    _last_view[uid] = (wid, f"d{di}")
+    rows, last = [], None
+    for it in items:
+        if it["cat"] != last:
+            rows.append([B("— " + it["cat"], "noop")])
+            last = it["cat"]
+        mark = "✅" if it["iid"] in checks else "⬜"
+        if it["name"] in week_done:
+            mark = "✅" if it["iid"] in checks else "🟢"      # уже куплено на неделю
+        q = fmtqty(it["qty"], it["unit"], people)
+        rows.append([B(shop_button(mark, it["name"], q), f"t:{it['iid']}")])
+    rows.append([B("‹ Другой день", f"day:{wid}"), B("⌂ Меню", "menu")])
+    await safe_edit(c.message,
+                    f"📅 <b>{esc(w['days'][int(di)]['name'])}</b>\n"
+                    f"<i>{esc(w['label'])} · на {people} чел.</i>\n"
+                    f"Осталось <b>{left}</b> из {len(items)}\n\n"
+                    "<i>🟢 — уже куплено в недельном заходе.</i>", KB(rows))
+
+
+@dp.callback_query(F.data.startswith("dsh:"))
+async def cb_day_shop(c: CallbackQuery):
+    _, wid, di = c.data.split(":")
+    await open_day_shop(c, wid, di)
+    await c.answer()
 
 
 def shop_button(mark, name, q):
@@ -1554,11 +1658,12 @@ async def open_shop(c: CallbackQuery, wid):
         left = sum(1 for it in sel if it["iid"] not in checks)
         mark = "✅ " if left == 0 else ""
         rows.append([B(f"{mark}{TRIP_SHORT[trip]} · {left} из {len(sel)}", f"st:{wid}:{trip}")])
+    rows.append([B("📅 На один день", f"day:{wid}")])
     rows.append([B("📋 Весь список текстом", f"txt:{wid}:all")])
     rows.append([B("➖", "p:-"), B(f"👥 {people} чел.", "noop"), B("➕", "p:+")])
     rows.append([B("↩︎ Сбросить всё", f"rs:{wid}:all")])
     rows.append([B("‹ Назад", f"plan:{wid}"), B("⌂ Меню", "menu")])
-    done = sum(1 for it in items if it["iid"] in checks)
+    done = sum(1 for it in items if it["iid"] in checks or it["covered"])
     txt = (f"🛒 <b>Закупки</b>\n<i>{esc(w['label'])} · на {people} чел.</i>\n"
            f"{bar(done, len(items))}\nКуплено <b>{done}</b> из {len(items)}\n\n"
            "Выбери, что закупаешь сейчас:")
@@ -1580,7 +1685,7 @@ def render_trip(wid, trip, uid):
     by_store = _by_store.get(uid, False)
     hide = _hide_done.get(uid, False)
     sel = [it for it in items if in_view(it, trip)]
-    left = [it for it in sel if it["iid"] not in checks]
+    left = [it for it in sel if it["iid"] not in checks and not it["covered"]]
     shown = left if hide else sel
 
     text = (f"<b>{esc(TRIP_NAME[trip])}</b>\n<i>{esc(w['label'])} · на {people} чел.</i>\n"
@@ -1605,8 +1710,13 @@ def render_trip(wid, trip, uid):
         if h != last:
             rows.append([B(h, "noop")])
             last = h
-        mark = "✅" if it["iid"] in checks else "⬜"
-        q = fmtqty(it["qty"], it["unit"], people)
+        mark = "✅" if (it["iid"] in checks or it["covered"]) else "⬜"
+        if it["covered"]:
+            q = "куплено"                 # полностью закрыто покупкой на день
+        else:
+            q = fmtqty(it["left"] if it["left"] is not None else it["qty"], it["unit"], people)
+            if it["paid"]:
+                q = (q or "") + " ↓"      # часть уже куплена на день
         rows.append([B(shop_button(mark, it["name"], q), f"t:{it['iid']}")])
 
     rows.append([B("🏬 Магазины" if not by_store else "📦 Разделы", f"grp:{wid}"),
@@ -1639,6 +1749,8 @@ async def refresh_view(c: CallbackQuery):
     wid, trip = _last_view.get(c.from_user.id, (None, None))
     if not wid:
         return
+    if isinstance(trip, str) and trip.startswith("d"):
+        return await open_day_shop(c, wid, trip[1:])
     if trip is None:
         return await open_shop(c, wid)
     text, kb = render_trip(wid, trip, c.from_user.id)
