@@ -189,6 +189,18 @@ body{margin:0;background:#EEF1EC}
 .cook-switch{display:flex;gap:4px;background:var(--bg);border-radius:8px;padding:3px;margin-bottom:6px}
 .cook-switch button{flex:1;border:none;background:transparent;font-family:inherit;font-size:12.5px;color:var(--muted);padding:6px 8px;border-radius:6px;cursor:pointer}
 .cook-switch button.on{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.08)}
+
+/* раскрывающиеся заходы */
+.trip-box{background:var(--surface);border:1px solid var(--line);border-left:3px solid var(--c);border-radius:10px;overflow:hidden}
+.trip-box.open{box-shadow:0 2px 10px rgba(22,36,30,.06)}
+.trip-box .trip{border:none;border-radius:0;background:none;width:100%}
+.trip-r{display:flex;align-items:center;gap:8px}
+.chev{color:var(--muted);font-size:12px;transition:transform .18s ease;display:inline-block}
+.trip-box.open .chev{transform:rotate(180deg)}
+.trip-body{padding:0 12px 12px;animation:drop .18s ease}
+.trip-body .grp{margin-bottom:10px}
+.trip-body .grp-body{border-radius:8px}
+@keyframes drop{from{opacity:.4;transform:translateY(-4px)}}
 </style>
 </head>
 <body>
@@ -547,12 +559,12 @@ function Menu({ plans, activeId, supps, onActivate, onRecipe, onGenerate }) {
 /* ---------- закупки ---------- */
 function Shop({ st, plans, act }) {
   const [planId, setPlanId] = useState(st.user.active || plans[0]?.id);
-  const [trip, setTrip] = useState(null);
+  const [open, setOpen] = useState([]);          // раскрытые заходы
   const [byStore, setByStore] = useState(false);
   const [hide, setHide] = useState(false);
-  const [adding, setAdding] = useState(false);
+  const [adding, setAdding] = useState(null);    // в какой заход дописываем
   const [draft, setDraft] = useState("");
-  const [copied, setCopied] = useState(false);
+  const [copied, setCopied] = useState(null);
   const plan = plans.find(p => p.id === planId) || plans[0];
   const people = st.user.people;
   const checks = new Set(st.user.checks);
@@ -567,43 +579,10 @@ function Shop({ st, plans, act }) {
 
   const inTrip = (it,t) => t==="p" ? PREORDER.includes(storeOf(it.badge,it.cat)) : it.trip===t;
   const done = iid => checks.has(iid);
+  const toggleOpen = id => setOpen(o => o.includes(id) ? o.filter(x => x !== id) : [...o, id]);
 
-  if (!trip) return html`<section>
-    <div class="chips">${plans.map(p => html`<button class=${"chip"+(p.id===planId?" on":"")}
-      style=${{"--c":p.accent}} onClick=${() => setPlanId(p.id)}>${p.label}</button>`)}</div>
-    <div class="gauge" style=${{"--c":plan.accent}}>
-      <div class="gauge-top"><span>Куплено</span>
-        <span class="mono">${items.filter(i=>done(i.iid)).length} / ${items.length}</span></div>
-      <div class="gauge-bar"><i style=${{width: (items.length ? items.filter(i=>done(i.iid)).length/items.length*100 : 0)+"%"}}></i></div>
-      <div class="gauge-sub">на ${people} чел.</div>
-    </div>
-    <div class="trips">${TRIPS.map(t => {
-      const sel = items.filter(i => inTrip(i,t.id));
-      if (!sel.length) return null;
-      const left = sel.filter(i => !done(i.iid)).length;
-      return html`<button class="trip" style=${{"--c":plan.accent}} onClick=${() => setTrip(t.id)}>
-        <div class="trip-l"><div class="trip-n">${t.name}</div><div class="trip-w">${t.when}</div></div>
-        <div class=${"trip-c mono"+(left===0?" ok":"")}>${left===0 ? "готово" : `${left} / ${sel.length}`}</div>
-      </button>`;
-    })}</div>
-    <button class="btn btn-wide" onClick=${() => act({action:"reset", ids: items.map(i=>i.iid)})}>Снять все отметки</button>
-  </section>`;
-
-  const meta = TRIPS.find(t => t.id === trip);
-  const sel = items.filter(i => inTrip(i,trip));
-  const left = sel.filter(i => !done(i.iid));
-  let shown = hide ? left : sel;
-  shown = byStore
-    ? [...shown].sort((a,b) => storeRank(storeOf(a.badge,a.cat))-storeRank(storeOf(b.badge,b.cat)) || a.name.localeCompare(b.name))
-    : [...shown].sort((a,b) => catRank(a.cat)-catRank(b.cat));
-  const groups = [];
-  shown.forEach(it => {
-    const key = byStore ? storeOf(it.badge,it.cat) : it.cat;
-    const g = groups[groups.length-1];
-    if (g && g.key === key) g.items.push(it); else groups.push({key, items:[it]});
-  });
-
-  const copyList = () => {
+  const copyList = (t, left) => {
+    const meta = TRIPS.find(x => x.id === t);
     const lines = [`${plan.label} · ${meta.name} · на ${people} чел.`];
     let last = null;
     [...left].sort((a,b) => storeRank(storeOf(a.badge,a.cat))-storeRank(storeOf(b.badge,b.cat)) || a.name.localeCompare(b.name))
@@ -614,46 +593,88 @@ function Shop({ st, plans, act }) {
         lines.push(`• ${it.name}${q ? " — " + q : ""}`);
       });
     navigator.clipboard?.writeText(lines.join("\n"));
-    setCopied(true); setTimeout(() => setCopied(false), 1800);
+    setCopied(t); setTimeout(() => setCopied(null), 1800);
   };
 
+  const totalDone = items.filter(i => done(i.iid)).length;
+
   return html`<section>
-    <button class="back" onClick=${() => setTrip(null)}>← Заходы</button>
-    <div class="triphead" style=${{"--c":plan.accent}}>
-      <div class="trip-n">${meta.name}</div>
-      <div class="trip-w">${plan.label} · осталось ${left.length} из ${sel.length}</div>
-      ${trip==="p" && html`<p class="note note-warn">Это не берётся по дороге: рыба и мясо — у поставщика, остальное едет доставкой.</p>`}
+    <div class="chips">${plans.map(p => html`<button class=${"chip"+(p.id===planId?" on":"")}
+      style=${{"--c":p.accent}} onClick=${() => { setPlanId(p.id); setOpen([]); }}>${p.label}</button>`)}</div>
+
+    <div class="gauge" style=${{"--c":plan.accent}}>
+      <div class="gauge-top"><span>Куплено</span><span class="mono">${totalDone} / ${items.length}</span></div>
+      <div class="gauge-bar"><i style=${{width:(items.length ? totalDone/items.length*100 : 0)+"%"}}></i></div>
+      <div class="gauge-sub">на ${people} чел.</div>
     </div>
-    <div class="toolbar">
+
+    ${open.length > 0 && html`<div class="toolbar">
       <button class=${byStore?"tool on":"tool"} onClick=${() => setByStore(!byStore)}>По магазинам</button>
       <button class=${hide?"tool on":"tool"} onClick=${() => setHide(!hide)}>Скрыть купленное</button>
-      <button class="tool" onClick=${copyList}>${copied ? "Скопировано" : "Скопировать"}</button>
-    </div>
-    ${groups.map(g => html`<div class="grp"><h3 class="grp-h">${g.key}</h3>
-      <div class="grp-body">${g.items.map(it => html`
-        <label class=${"row"+(done(it.iid)?" done":"")}>
-          <input type="checkbox" checked=${done(it.iid)} onChange=${() => act({action:"toggle", iid:it.iid})}/>
-          <span class="tick"></span>
-          <span class="row-main"><span class="row-n">${it.name}</span>
-            <span class="row-m">${!byStore && html`<span class="tag">${storeOf(it.badge,it.cat)}</span>`}
-              ${it.note && html`<span class="row-note">${it.note}</span>`}</span></span>
-          <span class="row-q mono">${fmtQty(it.qty,it.unit,people) || "—"}</span>
-          ${it.eid && html`<button class="del" onClick=${e => { e.preventDefault();
-            act({action:"extra_del", wid:plan.id, eid:it.eid}); }}>×</button>`}
-        </label>`)}</div></div>`)}
-    ${hide && !left.length && html`<p class="done-all">Всё куплено.</p>`}
-    ${adding ? html`<div class="add">
-        <textarea rows="3" value=${draft} onInput=${e => setDraft(e.target.value)}
-          placeholder="Что дописать? Каждый пункт с новой строки"></textarea>
-        <div class="add-btns">
-          <button class="btn" onClick=${() => {
-            const names = draft.split("\n").map(x=>x.trim()).filter(Boolean);
-            if (names.length) act({action:"extra_add", wid:plan.id, trip: trip==="p"?1:trip, names});
-            setDraft(""); setAdding(false);
-          }}>Добавить</button>
-          <button class="btn btn-ghost" onClick=${() => { setDraft(""); setAdding(false); }}>Отмена</button>
-        </div></div>`
-      : html`<button class="btn btn-wide" onClick=${() => setAdding(true)}>Дописать своё</button>`}
+    </div>`}
+
+    <div class="trips">${TRIPS.map(t => {
+      const sel = items.filter(i => inTrip(i,t.id));
+      if (!sel.length) return null;
+      const left = sel.filter(i => !done(i.iid));
+      const isOpen = open.includes(t.id);
+      let shown = hide ? left : sel;
+      shown = byStore
+        ? [...shown].sort((a,b) => storeRank(storeOf(a.badge,a.cat))-storeRank(storeOf(b.badge,b.cat)) || a.name.localeCompare(b.name))
+        : [...shown].sort((a,b) => catRank(a.cat)-catRank(b.cat));
+      const groups = [];
+      shown.forEach(it => {
+        const key = byStore ? storeOf(it.badge,it.cat) : it.cat;
+        const g = groups[groups.length-1];
+        if (g && g.key === key) g.items.push(it); else groups.push({key, items:[it]});
+      });
+      return html`<div class=${"trip-box"+(isOpen?" open":"")} style=${{"--c":plan.accent}}>
+        <button class="trip" onClick=${() => toggleOpen(t.id)}>
+          <div class="trip-l"><div class="trip-n">${t.name}</div><div class="trip-w">${t.when}</div></div>
+          <div class="trip-r">
+            <span class=${"trip-c mono"+(left.length===0?" ok":"")}>
+              ${left.length===0 ? "готово" : `${left.length} / ${sel.length}`}</span>
+            <span class="chev">▾</span>
+          </div>
+        </button>
+
+        ${isOpen && html`<div class="trip-body">
+          ${t.id==="p" && html`<p class="note note-warn">Это не берётся по дороге: рыба и мясо — у поставщика, остальное едет доставкой.</p>`}
+          ${groups.map(g => html`<div class="grp"><h3 class="grp-h">${g.key}</h3>
+            <div class="grp-body">${g.items.map(it => html`
+              <label class=${"row"+(done(it.iid)?" done":"")}>
+                <input type="checkbox" checked=${done(it.iid)} onChange=${() => act({action:"toggle", iid:it.iid})}/>
+                <span class="tick"></span>
+                <span class="row-main"><span class="row-n">${it.name}</span>
+                  <span class="row-m">${!byStore && html`<span class="tag">${storeOf(it.badge,it.cat)}</span>`}
+                    ${it.note && html`<span class="row-note">${it.note}</span>`}</span></span>
+                <span class="row-q mono">${fmtQty(it.qty,it.unit,people) || "—"}</span>
+                ${it.eid && html`<button class="del" onClick=${e => { e.preventDefault();
+                  act({action:"extra_del", wid:plan.id, eid:it.eid}); }}>×</button>`}
+              </label>`)}</div></div>`)}
+          ${hide && !left.length && html`<p class="done-all">Всё куплено.</p>`}
+
+          ${adding === t.id ? html`<div class="add">
+              <textarea rows="3" value=${draft} onInput=${e => setDraft(e.target.value)}
+                placeholder="Что дописать? Каждый пункт с новой строки"></textarea>
+              <div class="add-btns">
+                <button class="btn" onClick=${() => {
+                  const names = draft.split("\n").map(x=>x.trim()).filter(Boolean);
+                  if (names.length) act({action:"extra_add", wid:plan.id, trip: t.id==="p"?1:t.id, names});
+                  setDraft(""); setAdding(null);
+                }}>Добавить</button>
+                <button class="btn btn-ghost" onClick=${() => { setDraft(""); setAdding(null); }}>Отмена</button>
+              </div></div>`
+            : html`<div class="add-btns">
+                <button class="btn btn-ghost" onClick=${() => setAdding(t.id)}>Дописать своё</button>
+                <button class="btn btn-ghost" onClick=${() => copyList(t.id, left)}>
+                  ${copied===t.id ? "Скопировано" : "Скопировать"}</button>
+              </div>`}
+        </div>`}
+      </div>`;
+    })}</div>
+
+    <button class="btn btn-wide" onClick=${() => act({action:"reset", ids: items.map(i=>i.iid)})}>Снять все отметки</button>
   </section>`;
 }
 
