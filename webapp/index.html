@@ -277,6 +277,10 @@ body{margin:0;background:#EEF1EC}
 .tstep{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:transparent;
   color:var(--brand);font-size:16px;line-height:1;cursor:pointer;font-family:inherit}
 .tstep:active{transform:scale(.9)}
+.time-row .time-n{display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none}
+.time-row input{position:absolute;opacity:0;width:0;height:0}
+.time-row.off .time-n,.time-row.off .time-v{color:#AEB8B0}
+.tstep:disabled{opacity:.35;cursor:default}
 </style>
 </head>
 <body>
@@ -1046,17 +1050,23 @@ function Settings({ st, plans, act, onClose, onSupps, onGen }) {
     <button class=${"btn btn-wide "+(st.user.meals_on?"btn-on":"")}
       onClick=${() => act({action:"meals", on: !st.user.meals_on})}>
       ${st.user.meals_on ? "Включены" : "Выключены"}</button>
-    ${st.user.meals_on && html`<div class="times">${SLOTS.map(sl => html`
-      <div class="time-row">
-        <span class="time-n">${sl}</span>
-        <button class="tstep" onClick=${() => act({action:"meals",
+    ${st.user.meals_on && html`<div class="times">${SLOTS.map(sl => {
+      const on = st.user.meal_slots?.[sl] !== false;
+      return html`<div class=${"time-row" + (on ? "" : " off")}>
+        <label class="time-n">
+          <input type="checkbox" checked=${on}
+            onChange=${() => act({action:"meals", slots:{[sl]: !on}})}/>
+          <span class="tick"></span>${sl}
+        </label>
+        <button class="tstep" disabled=${!on} onClick=${() => act({action:"meals",
           times:{[sl]: shiftTime(st.user.meal_times[sl], -15)}})}>−</button>
         <span class="time-v mono">${st.user.meal_times[sl]}</span>
-        <button class="tstep" onClick=${() => act({action:"meals",
+        <button class="tstep" disabled=${!on} onClick=${() => act({action:"meals",
           times:{[sl]: shiftTime(st.user.meal_times[sl], 15)}})}>+</button>
-      </div>`)}</div>`}
-    <p class="hint">Перед каждым приёмом бот пришлёт, что съесть и какие добавки принять.
-      Уведомления приходят в Telegram, не в приложение.</p>
+      </div>`;
+    })}</div>`}
+    <p class="hint">Отметь, о каких приёмах напоминать. Бот пришлёт, что съесть и какие
+      добавки принять. Уведомления приходят в Telegram, не в приложение.</p>
 
     <h4>Ещё</h4>
     <button class="btn btn-wide" onClick=${onSupps}>Биодобавки (${st.user.supps.length})</button>
