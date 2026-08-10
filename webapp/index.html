@@ -281,6 +281,7 @@ input:checked + .tick{transform:scale(1.06)}
 .time-row input{position:absolute;opacity:0;width:0;height:0}
 .time-row.off .time-n,.time-row.off .time-v{color:#AEB8B0}
 .tstep:disabled{opacity:.35;cursor:default}
+.row-note.ok{color:var(--brand)}
 </style>
 </head>
 <body>
@@ -817,11 +818,42 @@ function DietScreen({ full, diet, allerg, act, onBack }) {
 }
 
 /* ---------- закупки ---------- */
+function dayBought(plan, table, checks) {
+  const acc = {};
+  (plan.days || []).forEach((d, di) => {
+    dayShop(plan, di, table, 1).forEach(it => {
+      if (checks.has(it.iid) && it.qty)
+        acc[it.name] = Math.round(((acc[it.name] || 0) + it.qty) * 100) / 100;
+    });
+  });
+  return acc;
+}
+
+function dayShop(plan, dayIdx, table, people) {
+  const day = plan.days?.[dayIdx];
+  if (!day) return [];
+  const agg = new Map();
+  day.meals.forEach(m => m.d.forEach(dish => {
+    (table[dish] || []).forEach(([cat, name, badge, unit, qty, note]) => {
+      if (qty === null || qty === undefined) return;
+      const k = name + "|" + unit;
+      if (!agg.has(k)) agg.set(k, {cat, name, badge, unit, qty, note});
+      else agg.get(k).qty = Math.round((agg.get(k).qty + qty) * 100) / 100;
+    });
+  }));
+  return [...agg.values()]
+    .sort((a, b) => catRank(a.cat) - catRank(b.cat) || a.name.localeCompare(b.name))
+    .map((it, i) => ({...it, iid: `${plan.id}:d${dayIdx}-${i}`}));
+}
+
+
 function Shop({ st, plans, act }) {
   const [planId, setPlanId] = useState(st.user.active || plans[0]?.id);
   const [open, setOpen] = useState([]);          // раскрытые заходы
   const [byStore, setByStore] = useState(false);
   const [hide, setHide] = useState(false);
+  const [dayOpen, setDayOpen] = useState(false);
+  const [dayIdx, setDayIdx] = useState(null);
   const [adding, setAdding] = useState(null);    // в какой заход дописываем
   const [draft, setDraft] = useState("");
   const [copied, setCopied] = useState(null);
@@ -832,13 +864,25 @@ function Shop({ st, plans, act }) {
   const items = useMemo(() => {
     const base = (plan.shop||[]).map((it,i) => ({iid:`${plan.id}:${i}`, cat:it[0], name:it[1], badge:it[2],
       unit:it[3], qty:it[4], note:it[5], trip:it[6]??1, eid:null}));
+    // то, что уже куплено точечно на день, вычитаем из недельного количества
+    const pool = dayBought(plan, st.plan.dish_ingredients, checks);
+    base.sort((a,b) => a.trip - b.trip).forEach(it => {
+      const have = pool[it.name] || 0;
+      if (!it.qty || !have) { it.left = it.qty; it.paid = 0; return; }
+      const take = Math.min(have, it.qty);
+      pool[it.name] = Math.round((have - take) * 100) / 100;
+      it.paid = take;
+      it.left = Math.round((it.qty - take) * 100) / 100;
+      it.covered = it.left <= 0.001;
+    });
     const mine = st.user.extras.filter(e => e.wid === plan.id).map(e => ({iid:`${plan.id}:x${e.eid}`,
-      cat:"Своё", name:e.name, badge:"", unit:"", qty:null, note:"", trip:e.trip, eid:e.eid}));
+      cat:"Своё", name:e.name, badge:"", unit:"", qty:null, left:null, trip:e.trip, eid:e.eid, note:""}));
     return [...base, ...mine];
-  }, [plan, st.user.extras]);
+  }, [plan, st.user.extras, st.user.checks]);
 
   const inTrip = (it,t) => t==="p" ? PREORDER.includes(storeOf(it.badge,it.cat)) : it.trip===t;
   const done = iid => checks.has(iid);
+  const closed = it => done(it.iid) || it.covered;
   const toggleOpen = id => setOpen(o => o.includes(id) ? o.filter(x => x !== id) : [...o, id]);
 
   const copyList = (t, left) => {
@@ -856,7 +900,7 @@ function Shop({ st, plans, act }) {
     setCopied(t); setTimeout(() => setCopied(null), 1800);
   };
 
-  const totalDone = items.filter(i => done(i.iid)).length;
+  const totalDone = items.filter(i => closed(i)).length;
 
   return html`<section>
     <div class="chips">${plans.map(p => html`<button class=${"chip"+(p.id===planId?" on":"")}
@@ -876,7 +920,7 @@ function Shop({ st, plans, act }) {
     <div class="trips">${TRIPS.map(t => {
       const sel = items.filter(i => inTrip(i,t.id));
       if (!sel.length) return null;
-      const left = sel.filter(i => !done(i.iid));
+      const left = sel.filter(i => !closed(i));
       const isOpen = open.includes(t.id);
       let shown = hide ? left : sel;
       shown = byStore
@@ -902,13 +946,16 @@ function Shop({ st, plans, act }) {
           ${t.id==="p" && html`<p class="note note-warn">Это не берётся по дороге: рыба и мясо — у поставщика, остальное едет доставкой.</p>`}
           ${groups.map(g => html`<div class="grp"><h3 class="grp-h">${g.key}</h3>
             <div class="grp-body">${g.items.map(it => html`
-              <label class=${"row"+(done(it.iid)?" done":"")}>
-                <input type="checkbox" checked=${done(it.iid)} onChange=${() => act({action:"toggle", iid:it.iid})}/>
+              <label class=${"row"+(closed(it)?" done":"")}>
+                <input type="checkbox" checked=${closed(it)} onChange=${() => act({action:"toggle", iid:it.iid})}/>
                 <span class="tick"></span>
                 <span class="row-main"><span class="row-n">${it.name}</span>
                   <span class="row-m">${!byStore && html`<span class="tag">${storeOf(it.badge,it.cat)}</span>`}
+                    ${it.paid > 0 && html`<span class="row-note ok">купил на день
+                      ${fmtQty(it.paid, it.unit, people)}</span>`}
                     ${it.note && html`<span class="row-note">${it.note}</span>`}</span></span>
-                <span class="row-q mono">${fmtQty(it.qty,it.unit,people) || "—"}</span>
+                <span class="row-q mono">${it.covered ? "куплено"
+                  : (fmtQty(it.left ?? it.qty, it.unit, people) || "—")}</span>
                 ${it.eid && html`<button class="del" onClick=${e => { e.preventDefault();
                   act({action:"extra_del", wid:plan.id, eid:it.eid}); }}>×</button>`}
               </label>`)}</div></div>`)}
@@ -933,6 +980,39 @@ function Shop({ st, plans, act }) {
         </div>`}
       </div>`;
     })}</div>
+
+    <div class=${"trip-box"+(dayOpen?" open":"")} style=${{"--c":plan.accent}}>
+      <button class="trip" onClick=${() => setDayOpen(!dayOpen)}>
+        <div class="trip-l"><div class="trip-n">На один день</div>
+          <div class="trip-w">если нужно докупить точечно</div></div>
+        <span class="chev">▾</span>
+      </button>
+      ${dayOpen && html`<div class="trip-body">
+        <div class="chips">${(plan.days||[]).map((d, i) => html`<button
+          class=${"chip"+(dayIdx===i?" on":"")} style=${{"--c":plan.accent}}
+          onClick=${() => setDayIdx(dayIdx===i ? null : i)}>${d.name.slice(0,3)}</button>`)}</div>
+        ${dayIdx === null
+          ? html`<p class="note">Выбери день — покажу, что нужно купить именно на него.</p>`
+          : html`<div>
+              <p class="note">${plan.days[dayIdx].name} · на ${people} чел.
+                Отметки здесь свои и не влияют на недельные заходы.</p>
+              <div class="grp-body">${dayShop(plan, dayIdx, st.plan.dish_ingredients, people).map(it => {
+                // продукт может быть в обоих заходах — достаточно отметки в любом
+                const already = items.some(x => x.name === it.name && done(x.iid));
+                return html`<label class=${"row"+(done(it.iid)?" done":"")}>
+                  <input type="checkbox" checked=${done(it.iid)} onChange=${() => act({action:"toggle", iid:it.iid})}/>
+                  <span class="tick"></span>
+                  <span class="row-main"><span class="row-n">${it.name}</span>
+                    <span class="row-m">
+                      <span class="tag">${storeOf(it.badge, it.cat)}</span>
+                      ${already && html`<span class="row-note ok">уже куплено на неделю</span>`}
+                    </span></span>
+                  <span class="row-q mono">${fmtQty(it.qty, it.unit, people) || "—"}</span>
+                </label>`;
+              })}</div>
+            </div>`}
+      </div>`}
+    </div>
 
     <button class="btn btn-wide" onClick=${() => act({action:"reset", ids: items.map(i=>i.iid)})}>Снять все отметки</button>
   </section>`;
