@@ -185,6 +185,10 @@ body{margin:0;background:#EEF1EC}
 .cook-u{font-size:10.5px;color:var(--muted);margin-left:4px}
 .cook-out{display:block;font-size:11px;color:var(--muted);margin-top:1px}
 .cook-link{font-size:12.5px;color:var(--brand)}
+.cook-quiet{border-left-color:var(--line);display:flex;flex-direction:column;gap:8px;align-items:flex-start}
+.cook-switch{display:flex;gap:4px;background:var(--bg);border-radius:8px;padding:3px;margin-bottom:6px}
+.cook-switch button{flex:1;border:none;background:transparent;font-family:inherit;font-size:12.5px;color:var(--muted);padding:6px 8px;border-radius:6px;cursor:pointer}
+.cook-switch button.on{background:var(--surface);color:var(--ink);font-weight:500;box-shadow:0 1px 2px rgba(0,0,0,.08)}
 </style>
 </head>
 <body>
@@ -261,11 +265,12 @@ function parseAmount(dish) {          // «Отварная гречка — 180
   return m ? { n: parseInt(m[1], 10), unit: m[2] } : null;
 }
 
-function cookPlan(plan, day, people, table) {
+function cookPlan(plan, day, people, table, forceDays) {
   const i = plan.days.findIndex(d => d.name === day.name);
   const repeat = sameMeals(day, plan.days[i-1]);
-  let days = 1;                       // на сколько дней готовим за раз
-  while (plan.days[i+days] && sameMeals(day, plan.days[i+days])) days++;
+  let block = 1;                      // сколько дней подряд едим то же самое
+  while (plan.days[i+block] && sameMeals(day, plan.days[i+block])) block++;
+  const days = forceDays || block;    // можно готовить не на весь блок
 
   const agg = new Map();
   day.meals.forEach(m => m.d.forEach(dish => {
@@ -298,7 +303,7 @@ function cookPlan(plan, day, people, table) {
              dryTotal: Math.round(a.dry * people * days / 5) * 5,
              rawTotal: Math.round(a.raw * people * days / 10) * 10 };
   });
-  return { days, repeat, items };
+  return { days, block, repeat, items };
 }
 
 /* ---------- случайное меню ---------- */
@@ -436,9 +441,11 @@ function App() {
 
 /* ---------- сегодня ---------- */
 function Today({ plan, day, supps, people, table, recipes, onRecipe, onPick }) {
+  const [cookDays, setCookDays] = useState(null);   // null — на весь блок
+  useEffect(() => setCookDays(null), [day?.name, plan?.id]);
   if (!plan || !day) return html`<div class="empty"><p>Меню на сегодня не выбрано.</p>
     <button class="btn" onClick=${onPick}>Выбрать меню</button></div>`;
-  const c = cookPlan(plan, day, people, table);
+  const c = cookPlan(plan, day, people, table, cookDays);
   return html`<section>
     <div class="stamp-row">
       <span class=${"stamp " + (c.repeat ? "stamp-keep" : "stamp-cook")}>
@@ -446,10 +453,20 @@ function Today({ plan, day, supps, people, table, recipes, onRecipe, onPick }) {
       <span class="stamp-note">${plan.label}</span>
     </div>
 
-    ${!c.repeat && c.items.length > 0 && html`
+    ${c.repeat && !cookDays && html`
+      <div class="cook cook-quiet">
+        <div class="cook-n">Сегодня то же, что вчера — готовить заново не нужно.</div>
+        <button class="btn btn-ghost" onClick=${() => setCookDays(1)}>Всё же приготовить на сегодня</button>
+      </div>`}
+
+    ${(!c.repeat || cookDays) && c.items.length > 0 && html`
       <div class="cook">
-        <div class="cook-h">Что приготовить${c.days > 1 ? ` — сразу на ${c.days} дня` : ""}
+        <div class="cook-h">Что приготовить${c.days > 1 ? ` — сразу на ${c.days} дня` : " — на сегодня"}
           <span class="cook-sub">на ${people} чел.</span></div>
+        ${c.block > 1 && html`<div class="cook-switch">
+          <button class=${c.days === 1 ? "on" : ""} onClick=${() => setCookDays(1)}>На сегодня</button>
+          <button class=${c.days > 1 ? "on" : ""} onClick=${() => setCookDays(null)}>На ${c.block} дня</button>
+        </div>`}
         ${c.items.map(it => html`
           <div class=${"cook-row" + (it.rid ? " cook-rec" : "")}
                onClick=${it.rid ? () => onRecipe(it.rid) : null}>
