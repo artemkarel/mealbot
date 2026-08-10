@@ -1096,6 +1096,24 @@ async def cb_noop(c: CallbackQuery):
 
 
 # ---------- settings ----------
+MEAL_DEFAULTS = {"Завтрак": "08:00", "Обед": "13:00", "Полдник": "16:00",
+                 "Ужин": "19:00", "2-й ужин": "21:30"}
+
+
+def meal_time(uid, slot):
+    return store.get_user_setting(uid, "mt:" + slot, MEAL_DEFAULTS[slot])
+
+
+def shift_time(hhmm, minutes):
+    """Сдвинуть время на N минут в пределах суток."""
+    try:
+        h, m = [int(x) for x in hhmm.split(":")]
+    except Exception:
+        h, m = 8, 0
+    total = max(0, min(23 * 60 + 45, h * 60 + m + minutes))
+    return f"{total // 60:02d}:{total % 60:02d}"
+
+
 MORNING_DEFAULT = "07:30"
 EVENING_DEFAULT = "21:00"
 TIME_CHOICES = ["06:30", "07:00", "07:30", "08:00", "08:30", "09:00"]
@@ -1117,6 +1135,7 @@ def settings_kb(uid):
             if w and store.get_user_setting(uid, "auto_next", "1") == "1"
             else "⏭ Автопереход выключен")[:60], "nxtsel")],
         [B(f"💊 Добавки: {len(store.all_supps(uid))}", "supps")],
+        [B(f"🍽 Напоминать о приёмах пищи: {'вкл' if rem_on(uid, 'meals_on', '0') else 'выкл'}", "meals")],
         [B(f"🌅 Утром меню дня: {mt if rem_on(uid, 'morning_on') else 'выкл'}", "remmorn")],
         [B(f"🌙 Вечером о готовке: {'вкл' if rem_on(uid, 'evening_on') else 'выкл'}", "remeve")],
         [B(f"🛒 Напоминать о закупах: {'вкл' if rem_on(uid, 'shop_on') else 'выкл'}", "remshop")],
@@ -1260,6 +1279,42 @@ async def cb_allergen_toggle(c: CallbackQuery):
     cur.symmetric_difference_update({a})
     store.set_user_setting(uid, "allergens", ",".join(sorted(cur)))
     await cb_gen_setup(c)
+
+
+@dp.callback_query(F.data == "meals")
+async def cb_meals(c: CallbackQuery):
+    uid = c.from_user.id
+    on = rem_on(uid, "meals_on", "0")
+    rows = [[B(("🔔 Напоминания включены" if on else "🔕 Напоминания выключены"), "mealson")]]
+    if on:
+        for i, slot in enumerate(SLOTS):
+            rows.append([B(f"{slot} · {meal_time(uid, slot)}", "noop"),
+                         B("−15", f"mtm:{i}"), B("+15", f"mtp:{i}")])
+    rows.append([B("‹ Настройки", "settings"), B("⌂ Меню", "menu")])
+    await safe_edit(c.message,
+                    "🍽 <b>Напоминания о приёмах пищи</b>\n\n"
+                    "<i>Перед каждым приёмом пришлю, что съесть и какие добавки принять. "
+                    "Время можно сдвигать по 15 минут.</i>", KB(rows))
+    await c.answer()
+
+
+@dp.callback_query(F.data == "mealson")
+async def cb_meals_toggle(c: CallbackQuery):
+    uid = c.from_user.id
+    store.set_user_setting(uid, "meals_on", "0" if rem_on(uid, "meals_on", "0") else "1")
+    reschedule()
+    await cb_meals(c)
+
+
+@dp.callback_query(F.data.startswith(("mtm:", "mtp:")))
+async def cb_meal_time(c: CallbackQuery):
+    uid = c.from_user.id
+    kind, i = c.data.split(":")
+    slot = SLOTS[int(i)]
+    store.set_user_setting(uid, "mt:" + slot,
+                           shift_time(meal_time(uid, slot), -15 if kind == "mtm" else 15))
+    reschedule()
+    await cb_meals(c)
 
 
 @dp.callback_query(F.data == "remmorn")
@@ -2001,6 +2056,32 @@ async def remind_morning(uid):
         logging.exception("morning to %s", uid)
 
 
+async def remind_meal(uid, slot):
+    """Напоминание о конкретном приёме пищи: что съесть и какие добавки."""
+    w = active_plan(uid)
+    if not w:
+        return
+    day = day_for_date(w, tznow().date(), uid)
+    if not day:
+        return
+    meal = next((m for m in day["meals"] if m["t"] == slot), None)
+    sb = supps_by_slot(uid).get(slot, [])
+    if not meal or (not meal["d"] and not sb):
+        return
+    allerg = user_allergens(uid)
+    lines = [f"🍽 <b>{esc(slot)}</b>", ""]
+    for x in meal["d"]:
+        bad = conflicts(x, allerg)
+        lines.append(dish_line(x) + (f"  ⚠️ <i>{esc(', '.join(bad))}</i>" if bad else ""))
+    for sp in sb:
+        lines.append(f"💊 <i>{esc(supp_text(sp))}</i>")
+    kb = KB([[B("🍽 Весь день", "today")], [B("⌂ Меню", "menu")]])
+    try:
+        await notify(uid, "meal" + slot, "\n".join(lines), kb)
+    except Exception:
+        logging.exception("meal reminder to %s", uid)
+
+
 async def remind_evening(uid):
     """Вечером — только если завтра начинается новый блок и надо готовить."""
     w = active_plan(uid)
@@ -2076,6 +2157,14 @@ def reschedule():
             hh, mm = [int(x) for x in EVENING_DEFAULT.split(":")]
             sched.add_job(remind_evening, "cron", hour=hh, minute=mm, args=[uid],
                           id=f"e:{uid}", misfire_grace_time=3600, coalesce=True)
+        if rem_on(uid, "meals_on", "0"):          # по умолчанию выключено
+            for si, slot in enumerate(SLOTS):
+                try:
+                    hh, mm = [int(x) for x in meal_time(uid, slot).split(":")]
+                except Exception:
+                    continue
+                sched.add_job(remind_meal, "cron", hour=hh, minute=mm, args=[uid, slot],
+                              id=f"ml:{uid}:{si}", misfire_grace_time=1800, coalesce=True)
         if rem_on(uid, "shop_on"):
             sched.add_job(remind_shop, "cron", day_of_week="sun", hour=10, minute=0,
                           args=[uid, "t1"], id=f"s1:{uid}", misfire_grace_time=7200, coalesce=True)

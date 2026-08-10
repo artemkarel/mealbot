@@ -14,6 +14,10 @@ from aiohttp import web
 
 import store
 
+SLOTS = ["Завтрак", "Обед", "Полдник", "Ужин", "2-й ужин"]
+MEAL_DEFAULTS = {"Завтрак": "08:00", "Обед": "13:00", "Полдник": "16:00",
+                 "Ужин": "19:00", "2-й ужин": "21:30"}
+
 BOT_TOKEN = os.environ.get("BOT_TOKEN", "")
 MAX_AGE = 24 * 3600          # initData старше суток не принимаем
 
@@ -71,6 +75,8 @@ def user_state(uid):
             "supps": store.all_supps(uid),
             "cafe": store.all_cafe(uid),
             "allergens": [x for x in (store.get_user_setting(uid, "allergens", "") or "").split(",") if x],
+            "meals_on": store.get_user_setting(uid, "meals_on", "0") == "1",
+            "meal_times": {s: store.get_user_setting(uid, "mt:" + s, MEAL_DEFAULTS[s]) for s in SLOTS},
         },
     }
 
@@ -110,6 +116,12 @@ async def h_act(request):
             store.set_supp_slots(uid, data["sid"], data.get("slots", ""))
         elif act == "supp_timing":
             store.set_supp_timing(uid, data["sid"], data.get("timing", ""))
+        elif act == "meals":
+            if "on" in data:
+                store.set_user_setting(uid, "meals_on", "1" if data["on"] else "0")
+            for slot, t in (data.get("times") or {}).items():
+                if slot in MEAL_DEFAULTS:
+                    store.set_user_setting(uid, "mt:" + slot, str(t)[:5])
         elif act == "allergens":
             store.set_user_setting(uid, "allergens", ",".join(data.get("list", [])))
         elif act == "cafe_add":
