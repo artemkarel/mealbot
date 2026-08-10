@@ -471,8 +471,18 @@ class Edit(StatesGroup):
 
 
 # ---------- биодобавки ----------
+TIMING = {"before": "до еды", "with": "во время еды", "after": "после еды"}
+TIMING_ORDER = ["before", "with", "after", ""]
+
+
 def supp_text(sp):
-    return sp["name"] + (f" — {sp['dose']}" if sp["dose"] else "")
+    s = sp["name"]
+    if sp["dose"]:
+        s += f" — {sp['dose']}"
+    t = TIMING.get(sp.get("timing") or "")
+    if t:
+        s += f" · {t}"
+    return s
 
 
 def supps_by_slot(uid):
@@ -482,6 +492,8 @@ def supps_by_slot(uid):
             sl = sl.strip()
             if sl:
                 out.setdefault(sl, []).append(sp)
+    for lst in out.values():
+        lst.sort(key=lambda x: TIMING_ORDER.index(x.get("timing") or ""))
     return out
 
 
@@ -491,8 +503,9 @@ def supps_screen(uid):
     for sp in supps:
         sl = [x for x in (sp["slots"] or "").split(",") if x]
         tag = "—" if not sl else (sl[0] if len(sl) == 1 else f"{sl[0]} +{len(sl)-1}")
-        nm = sp["name"] if len(sp["name"]) <= 18 else sp["name"][:17] + "…"
-        rows.append([B(f"💊 {nm} · {tag}", f"supp:{sp['sid']}")])
+        t = {"before": " ↑", "with": " •", "after": " ↓"}.get(sp.get("timing") or "", "")
+        nm = sp["name"] if len(sp["name"]) <= 16 else sp["name"][:15] + "…"
+        rows.append([B(f"💊 {nm} · {tag}{t}", f"supp:{sp['sid']}")])
     rows.append([B("➕ Добавить добавку", "sadd")])
     rows.append([B("‹ Настройки", "settings"), B("⌂ Меню", "menu")])
     txt = ("💊 <b>Биодобавки</b>\n" + "\n"
@@ -516,12 +529,17 @@ async def open_supp(c: CallbackQuery, sid):
     chosen = {s.strip() for s in (sp["slots"] or "").split(",") if s.strip()}
     rows = [[B(("✅ " if s in chosen else "⬜ ") + s, f"sslot:{sid}:{i}")]
             for i, s in enumerate(SLOTS)]
+    cur_t = sp.get("timing") or ""
+    labels = {"before": "До еды", "with": "Во время", "after": "После еды"}
+    rows.append([B(("✓ " if cur_t == k else "") + labels[k], f"stime:{sid}:{k}")
+                 for k in TIMING])
     rows.append([B("🗑 Удалить", f"sdel:{sid}")])
     rows.append([B("‹ Добавки", "supps"), B("⌂ Меню", "menu")])
     await safe_edit(c.message,
                     f"💊 <b>{esc(sp['name'])}</b>"
                     + (f"\n<i>{esc(sp['dose'])}</i>" if sp["dose"] else "")
-                    + f"\nК каким приёмам пищи привязать:", KB(rows))
+                    + "\nК каким приёмам пищи привязать:"
+                    + "\n<i>Ниже — как принимать: до, во время или после еды.</i>", KB(rows))
 
 
 @dp.callback_query(F.data.startswith("supp:"))
@@ -546,6 +564,18 @@ async def cb_supp_slot(c: CallbackQuery):
     store.set_supp_slots(c.from_user.id, sid, ",".join(chosen))
     await open_supp(c, sid)
     await c.answer()
+
+
+@dp.callback_query(F.data.startswith("stime:"))
+async def cb_supp_timing(c: CallbackQuery):
+    _, sid, key = c.data.split(":")
+    sp = store.get_supp(c.from_user.id, sid)
+    if not sp:
+        return await c.answer("Не найдено", show_alert=True)
+    new = "" if (sp.get("timing") or "") == key else key      # повторное нажатие снимает
+    store.set_supp_timing(c.from_user.id, sid, new)
+    await open_supp(c, sid)
+    await c.answer(TIMING.get(new, "Без уточнения"))
 
 
 @dp.callback_query(F.data.startswith("sdel:"))
@@ -614,47 +644,76 @@ def menu_kb(uid=None):
     ])
 
 
+MONTHS = ["января", "февраля", "марта", "апреля", "мая", "июня",
+          "июля", "августа", "сентября", "октября", "ноября", "декабря"]
+
+
 def menu_text(uid):
-    w = active_plan(uid)
     d = tznow()
-    head = f"🍲 <b>План питания</b>\n<i>{WEEKDAYS[d.weekday()]}, {d:%d.%m}</i>\n\n"
-    if w:
-        day = day_for_date(w, d.date(), uid)
-        cur = f"▶️ Питаемся по: <b>{esc(w['label'])}</b>"
-        if day:
-            cur += f"\n📅 Сегодня — {esc(day['name'])}"
-        nxt = (store.get_week(next_plan_id(uid, w["id"]))
-               if store.get_user_setting(uid, "auto_next", "1") == "1" else None)
-        if nxt:
-            cur += f"\n⏭ С понедельника — {esc(nxt['label'])}"
+    head = (f"🍲 <b>{WEEKDAYS[d.weekday()]}, {d.day} {MONTHS[d.month - 1]}</b>\n")
+    w = active_plan(uid)
+    if not w:
+        return head + "\n▶️ <i>Меню пока не выбрано</i>"
+
+    lines = [f"▶️ {esc(w['label'])}"]
+
+    # готовим сегодня или доедаем вчерашнее
+    day = day_for_date(w, d.date(), uid)
+    if day:
+        prev = day_for_date(w, d.date() - timedelta(days=1), uid)
+        nxt = day_for_date(w, d.date() + timedelta(days=1), uid)
+        if meals_equal(day, prev):
+            lines.append("♻️ Сегодня то же, что вчера — готовить не нужно")
+        elif meals_equal(day, nxt):
+            lines.append("🍳 Готовим сегодня — сразу на два дня")
+        else:
+            lines.append("🍳 Готовим сегодня")
+
+    # добавки: к какому приёму что принять
+    sb = supps_by_slot(uid)
+    shown = 0
+    for slot in SLOTS:
+        if slot not in sb:
+            continue
+        if shown == 3:                       # не раздуваем экран
+            lines.append("💊 …")
+            break
+        names = ", ".join(sp["name"] for sp in sb[slot])
+        lines.append(f"💊 {esc(slot)}: {esc(names)}"[:70])
+        shown += 1
+
+    # ближайший незакрытый заход
+    _, items = shop_items(uid, w["id"])
+    checks = store.checked_set(uid, w["id"] + ":")
+    for trip in (1, 2):
+        sel = [it for it in items if in_view(it, trip)]
+        left = [it for it in sel if it["iid"] not in checks]
+        if sel and left:
+            name = TRIP_SHORT[trip].split(" ", 1)[1]      # без цветного кружка
+            lines.append(f"🛒 {name}: осталось {len(left)} из {len(sel)}"
+                         f"\n   {bar(len(sel) - len(left), len(sel), 10)}")
+            break
     else:
-        cur = "▶️ <i>Меню пока не выбрано</i>"
-    return head + cur
+        if items:
+            lines.append("🛒 Всё куплено")
 
+    # что включится со следующей недели
+    if store.get_user_setting(uid, "auto_next", "1") == "1":
+        nxt_w = store.get_week(next_plan_id(uid, w["id"]))
+        if nxt_w:
+            lines.append(f"⏭ С понедельника — {esc(nxt_w['label'])}")
 
-INTRO = (
-    "🍲 <b>План питания</b>\n\n"
-    "Меню на каждый день, список покупок с галочками и рецепты.\n\n"
-    "Всё личное: меню, закупки, добавки и напоминания у каждого свои — "
-    "другие их не видят.\n\n"
-    "Утром в 7:30 пришлю, что есть сегодня.\n"
-)
+    return head + "\n" + "\n".join(lines)
 
 
 @dp.message(CommandStart())
 async def start(m: Message):
     uid = m.from_user.id
+    known = m.chat.id in store.all_chats()
     store.add_chat(m.chat.id)
     await del_msg(m.chat.id, m.message_id)
-    if store.get_user_setting(uid, "seen_intro") != "1":
-        store.set_user_setting(uid, "seen_intro", "1")
+    if not known:
         reschedule()                       # у нового человека — свои напоминания
-        w = active_plan(uid)
-        tail = (f"\nСейчас питаемся по <b>{esc(w['label'])}</b> — загляни, что сегодня."
-                if w else "\nНачнём: по какому меню питаемся?")
-        kb = menu_kb(uid)
-        rows = [[B("❓ Как это работает", "help")]] + list(kb.inline_keyboard)
-        return await show(m.chat.id, INTRO + tail, KB(rows))
     await show(m.chat.id, menu_text(uid), menu_kb(uid))
 
 

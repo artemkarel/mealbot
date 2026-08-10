@@ -83,7 +83,7 @@ def init():
             CREATE TABLE IF NOT EXISTS supplements(
                 sid INTEGER PRIMARY KEY AUTOINCREMENT,
                 uid INTEGER DEFAULT 0,
-                name TEXT, dose TEXT, slots TEXT);
+                name TEXT, dose TEXT, slots TEXT, timing TEXT DEFAULT '');
             CREATE TABLE IF NOT EXISTS chats(chat_id INTEGER PRIMARY KEY);
             """
         )
@@ -91,6 +91,9 @@ def init():
             cols = [r[1] for r in c.execute(f"PRAGMA table_info({tbl})").fetchall()]
             if "uid" not in cols:                   # база из прошлой версии
                 c.execute(f"ALTER TABLE {tbl} ADD COLUMN uid INTEGER DEFAULT 0")
+        cols = [r[1] for r in c.execute("PRAGMA table_info(supplements)").fetchall()]
+        if "timing" not in cols:
+            c.execute("ALTER TABLE supplements ADD COLUMN timing TEXT DEFAULT ''")
 
 
 # ---- settings (kv) ----
@@ -215,13 +218,13 @@ def del_extra(uid, wid, eid):
 def all_supps(uid):
     with conn() as c:
         return [dict(r) for r in c.execute(
-            "SELECT sid,name,dose,slots FROM supplements WHERE uid=? ORDER BY sid",
+            "SELECT sid,name,dose,slots,timing FROM supplements WHERE uid=? ORDER BY sid",
             (int(uid),)).fetchall()]
 
 
 def get_supp(uid, sid):
     with conn() as c:
-        r = c.execute("SELECT sid,name,dose,slots FROM supplements WHERE sid=? AND uid=?",
+        r = c.execute("SELECT sid,name,dose,slots,timing FROM supplements WHERE sid=? AND uid=?",
                       (int(sid), int(uid))).fetchone()
         return dict(r) if r else None
 
@@ -237,6 +240,12 @@ def set_supp_slots(uid, sid, slots):
     with conn() as c:
         c.execute("UPDATE supplements SET slots=? WHERE sid=? AND uid=?",
                   (slots, int(sid), int(uid)))
+
+
+def set_supp_timing(uid, sid, timing):
+    with conn() as c:
+        c.execute("UPDATE supplements SET timing=? WHERE sid=? AND uid=?",
+                  (timing, int(sid), int(uid)))
 
 
 def del_supp(uid, sid):
