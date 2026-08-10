@@ -345,6 +345,9 @@ def cook_plan(w, day, people, uid, force_days=None):
         else:
             total, unit = 0, ""
         items.append({"name": name, "total": total, "unit": unit, "rid": a["rid"],
+                      "slots": a["slots"], "portions": k,
+                      "base": int(a["am"].group(1)) if a["am"] else 0,
+                      "base_unit": a["am"].group(2) if a["am"] else "",   # единица из меню
                       "dry": round(a["dry"] * people * days / 5) * 5,
                       "raw": round(a["raw"] * people * days / 10) * 10})
     return {"days": days, "block": block, "repeat": repeat, "items": items}
@@ -383,15 +386,16 @@ def day_card(w, d, head, uid, cook_days=None):
             row = f"  • {esc(it['name'])}"
             if it["total"]:
                 row += f" — <b>{it['total']} {it['unit']}</b>"
-            hints = []
+            hints = [", ".join(it["slots"]).lower()]
+            if it["base"] and it["portions"] > 1:
+                hints.append(f"{it['base']} {it['base_unit']} × {it['portions']}")
             if it["dry"]:
                 hints.append(f"сварить {it['dry']} г сухой")
             if it["raw"]:
                 hints.append(f"взять {it['raw']} г сырого")
             if it["rid"]:
                 hints.append("по рецепту")
-            if hints:
-                row += f"\n     <i>{esc(', '.join(hints))}</i>"
+            row += f"\n     <i>{esc(' · '.join(hints))}</i>"
             lines.append(row)
         if c["block"] > 1:                     # можно готовить не на весь блок сразу
             cook_rows = [[B(("✓ " if c["days"] == 1 else "") + "На сегодня", f"cook:1:{shift}"),
