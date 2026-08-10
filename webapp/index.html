@@ -269,6 +269,14 @@ body{margin:0;background:#EEF1EC}
 .picker{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
 .picker-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:8px}
 .picker-n{font-size:11px}
+.times{background:var(--surface);border:1px solid var(--line);border-radius:10px;overflow:hidden;margin-bottom:8px}
+.time-row{display:grid;grid-template-columns:1fr auto auto auto;align-items:center;gap:8px;padding:8px 12px;border-top:1px solid var(--line)}
+.time-row:first-child{border-top:none}
+.time-n{font-size:14px}
+.time-v{font-size:14px;min-width:48px;text-align:center}
+.tstep{width:30px;height:30px;border-radius:50%;border:1px solid var(--line);background:transparent;
+  color:var(--brand);font-size:16px;line-height:1;cursor:pointer;font-family:inherit}
+.tstep:active{transform:scale(.9)}
 </style>
 </head>
 <body>
@@ -337,6 +345,12 @@ async function api(path, payload) {
   });
   if (!r.ok) throw new Error(r.status === 401 ? "Не удалось подтвердить, что это ты. Открой приложение из бота." : "Сервер недоступен");
   return r.json();
+}
+
+function shiftTime(hhmm, minutes) {
+  const [h, m] = (hhmm || "08:00").split(":").map(Number);
+  const t = Math.max(0, Math.min(23*60+45, h*60 + m + minutes));
+  return String(Math.floor(t/60)).padStart(2,"0") + ":" + String(t%60).padStart(2,"0");
 }
 
 /* ---------- аллергены ---------- */
@@ -1028,6 +1042,22 @@ function Settings({ st, plans, act, onClose, onSupps, onGen }) {
       style=${{"--c":p.accent}} onClick=${() => act({action:"active", wid:p.id, today:new Date().toISOString().slice(0,10)})}>
       ${p.label}</button>`)}</div>
     <p class="hint">По нему строится вкладка «Сегодня» и напоминания в боте.</p>
+    <h4>Напоминания о приёмах пищи</h4>
+    <button class=${"btn btn-wide "+(st.user.meals_on?"btn-on":"")}
+      onClick=${() => act({action:"meals", on: !st.user.meals_on})}>
+      ${st.user.meals_on ? "Включены" : "Выключены"}</button>
+    ${st.user.meals_on && html`<div class="times">${SLOTS.map(sl => html`
+      <div class="time-row">
+        <span class="time-n">${sl}</span>
+        <button class="tstep" onClick=${() => act({action:"meals",
+          times:{[sl]: shiftTime(st.user.meal_times[sl], -15)}})}>−</button>
+        <span class="time-v mono">${st.user.meal_times[sl]}</span>
+        <button class="tstep" onClick=${() => act({action:"meals",
+          times:{[sl]: shiftTime(st.user.meal_times[sl], 15)}})}>+</button>
+      </div>`)}</div>`}
+    <p class="hint">Перед каждым приёмом бот пришлёт, что съесть и какие добавки принять.
+      Уведомления приходят в Telegram, не в приложение.</p>
+
     <h4>Ещё</h4>
     <button class="btn btn-wide" onClick=${onSupps}>Биодобавки (${st.user.supps.length})</button>
     <button class="btn btn-wide" onClick=${onGen}>Собрать своё меню</button>
