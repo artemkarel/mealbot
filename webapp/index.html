@@ -261,6 +261,14 @@ body{margin:0;background:#EEF1EC}
 .cafe-p{font-size:11.5px;color:var(--muted);margin-top:2px}
 .warn{font-size:10.5px;color:var(--amber);margin-left:6px;white-space:nowrap}
 .dishes li.bad .d-name{color:var(--muted)}
+.mode-switch{margin-bottom:12px}
+.swap-row{display:flex;justify-content:space-between;align-items:center;gap:10px}
+.swap{border:1px solid var(--line);background:transparent;color:var(--brand);font-family:inherit;
+  font-size:11px;padding:3px 10px;border-radius:999px;cursor:pointer;white-space:nowrap}
+.swap:active{transform:scale(.95)}
+.picker{background:var(--surface);border:1px solid var(--line);border-radius:10px;padding:10px 12px;margin-bottom:10px}
+.picker-h{display:flex;justify-content:space-between;align-items:baseline;gap:8px;font-size:12.5px;color:var(--muted);margin-bottom:8px}
+.picker-n{font-size:11px}
 </style>
 </head>
 <body>
@@ -445,6 +453,63 @@ function generateWeek(plan, allerg) {
            days, shop: shopForDays(days, plan.dish_ingredients) };
 }
 
+/* ---------- меню из библиотеки диеты ---------- */
+const SEA = ["рыба", "морепродукты"];
+const LIGHT = ["напиток", "растительный", "орехи"];
+
+function poolFor(plan, diet, allerg, slot) {
+  return (plan.library || []).filter(d =>
+    d.diet === diet && d.slot === slot &&
+    !conflicts(d.name, plan.dish_tags || {}, allerg).length);
+}
+
+function pickDish(pool, used, dayProteins) {
+  const group = p => SEA.includes(p) ? "море" : p;
+  for (const strict of [true, false]) {
+    let opts = pool.filter(d => !used.has(d.name));
+    if (strict) opts = opts.filter(d => LIGHT.includes(d.protein) || !dayProteins.has(group(d.protein)));
+    if (opts.length) return opts[Math.floor(Math.random() * opts.length)];
+  }
+  return pool.length ? pool[Math.floor(Math.random() * pool.length)] : null;
+}
+
+function generateDiet(plan, diet, allerg) {
+  const used = new Set(), days = [];
+  BLOCKS.forEach(block => {
+    const dayProteins = new Set(), meals = [];
+    SLOTS.forEach(slot => {
+      const pool = poolFor(plan, diet, allerg, slot);
+      const d = pickDish(pool, used, dayProteins);
+      if (!d) return;
+      used.add(d.name);
+      if (!LIGHT.includes(d.protein)) dayProteins.add(SEA.includes(d.protein) ? "море" : d.protein);
+      meals.push({ t: slot, d: [d.name] });
+    });
+    block.forEach(name => days.push({ name, meals: meals.map(m => ({t:m.t, d:[...m.d]})) }));
+  });
+  const info = (plan.diets || []).find(x => x.id === diet) || {};
+  return { id: "g" + Date.now(), diet, label: info.name || "Меню",
+           dates: new Date().toLocaleDateString("ru-RU"), accent: "#2F6B66",
+           note: "Блюда повторяются по два дня — готовим один раз на два приёма.",
+           days, shop: shopForDays(days, plan.dish_ingredients) };
+}
+
+// заменить одно блюдо во всех днях блока
+function swapDish(plan, week, diet, allerg, dayIdx, slot) {
+  const used = new Set(week.days.flatMap(d => d.meals.flatMap(m => m.d)));
+  const cur = week.days[dayIdx].meals.find(m => m.t === slot)?.d[0];
+  used.delete(cur);
+  const pool = poolFor(plan, diet, allerg, slot).filter(d => d.name !== cur);
+  const next = pickDish(pool, used, new Set());
+  if (!next) return week;
+  const days = week.days.map(day => {
+    const same = day.meals.some(m => m.t === slot && m.d[0] === cur);
+    if (!same) return day;
+    return {...day, meals: day.meals.map(m => m.t === slot ? {...m, d:[next.name]} : m)};
+  });
+  return {...week, days, shop: shopForDays(days, plan.dish_ingredients)};
+}
+
 /* ================= ПРИЛОЖЕНИЕ ================= */
 function App() {
   const [st, setSt] = useState(null);
@@ -514,7 +579,7 @@ function App() {
             people=${people} table=${st.plan.dish_ingredients} recipes=${st.plan.recipes}
             tags=${st.plan.dish_tags} allerg=${st.user.allergens}
             onRecipe=${setOpenRec} onPick=${() => setSheet("settings")}/>`}
-        ${tab==="menu" && html`<${Menu} plans=${plans} activeId=${st.user.active} supps=${st.user.supps}
+        ${tab==="menu" && html`<${Menu} plan=${st.plan} act=${act} plans=${plans} activeId=${st.user.active} supps=${st.user.supps}
             tags=${st.plan.dish_tags} allerg=${st.user.allergens}
             onActivate=${wid => act({action:"active", wid, today:new Date().toISOString().slice(0,10)})}
             onRecipe=${setOpenRec} onGenerate=${() => setSheet("gen")}/>`}
@@ -612,8 +677,27 @@ function DayCard({ day, supps, onRecipe, big, tags, allerg }) {
 }
 
 /* ---------- меню ---------- */
-function Menu({ plans, activeId, supps, tags, allerg, onActivate, onRecipe, onGenerate }) {
+function Menu({ plan: full, plans, activeId, supps, tags, allerg, act, onActivate, onRecipe, onGenerate }) {
+  const [mode, setMode] = useState("own");
+  const [diet, setDiet] = useState(null);
   const [openId, setOpenId] = useState(activeId || plans[0]?.id);
+  const diets = (full.diets || []).filter(d => d.id !== "own");
+
+  if (mode === "diets") {
+    return diet
+      ? html`<${DietScreen} full=${full} diet=${diet} allerg=${allerg} act=${act}
+               onBack=${() => setDiet(null)}/>`
+      : html`<section>
+          <${ModeSwitch} mode=${mode} setMode=${setMode}/>
+          <p class="note">Готовые направления питания. Меню собирается по кнопке — можно
+            пересобрать или заменить отдельное блюдо.</p>
+          ${diets.map(d => html`<button class="trip" style=${{"--c":"#2F6B66"}} onClick=${() => setDiet(d.id)}>
+            <div class="trip-l"><div class="trip-n">${d.name}</div>
+              <div class="trip-w">${(full.library||[]).filter(x=>x.diet===d.id).length} блюд</div></div>
+            <span class="chev">›</span>
+          </button>`)}
+        </section>`;
+  }
   const plan = plans.find(p => p.id === openId) || plans[0];
   const blocks = [];
   plan.days.forEach(d => {
@@ -621,6 +705,7 @@ function Menu({ plans, activeId, supps, tags, allerg, onActivate, onRecipe, onGe
     if (last && sameMeals(last[0], d)) last.push(d); else blocks.push([d]);
   });
   return html`<section>
+    <${ModeSwitch} mode=${mode} setMode=${setMode}/>
     <div class="chips">
       ${plans.map(p => html`<button class=${"chip"+(p.id===openId?" on":"")} style=${{"--c":p.accent}}
         onClick=${() => setOpenId(p.id)}>${p.label}</button>`)}
@@ -639,6 +724,77 @@ function Menu({ plans, activeId, supps, tags, allerg, onActivate, onRecipe, onGe
         <div class="block-days">
           ${block.map(d => html`<${DayCard} day=${d} supps=${supps} onRecipe=${onRecipe} tags=${tags} allerg=${allerg}/>`)}
         </div></div>`)}
+  </section>`;
+}
+
+function AllergenPicker({ full, allerg, act }) {
+  const list = full.allergens || [];
+  const fits = Object.entries(full.dish_tags || {})
+    .filter(([, t]) => !t.some(x => allerg.includes(x))).length;
+  return html`<div class="picker">
+    <div class="picker-h">Без чего собирать
+      <span class="picker-n mono">${fits} блюд подходит</span></div>
+    <div class="slots">${list.map(a => html`<button class=${"slot-b"+(allerg.includes(a)?" on":"")}
+      onClick=${() => act({action:"allergens", list: allerg.includes(a)
+        ? allerg.filter(x => x !== a) : [...allerg, a]})}>${a}</button>`)}</div>
+  </div>`;
+}
+
+function ModeSwitch({ mode, setMode }) {
+  return html`<div class="cook-switch mode-switch">
+    <button class=${mode==="own"?"on":""} onClick=${() => setMode("own")}>Мой план</button>
+    <button class=${mode==="diets"?"on":""} onClick=${() => setMode("diets")}>Диеты</button>
+  </div>`;
+}
+
+function DietScreen({ full, diet, allerg, act, onBack }) {
+  const info = (full.diets || []).find(d => d.id === diet) || {};
+  const [week, setWeek] = useState(null);
+  const [saved, setSaved] = useState(false);
+
+  const blocks = [];
+  (week?.days || []).forEach(d => {
+    const last = blocks[blocks.length-1];
+    if (last && sameMeals(last.days[0], d)) last.days.push(d);
+    else blocks.push({days:[d], idx: week.days.indexOf(d)});
+  });
+
+  return html`<section>
+    <button class="back" onClick=${onBack}>← Диеты</button>
+    <div class="planbar" style=${{"--c":"#2F6B66"}}>
+      <div><div class="planbar-t">${info.name}</div>
+        <div class="planbar-d">${(full.library||[]).filter(x=>x.diet===diet).length} блюд в подборке</div></div>
+      <button class="btn btn-on" onClick=${() => { setWeek(generateDiet(full, diet, allerg)); setSaved(false); }}>
+        ${week ? "Пересобрать" : "Сгенерировать"}</button>
+    </div>
+    ${info.note && html`<p class="note">${info.note}</p>`}
+    <${AllergenPicker} full=${full} allerg=${allerg} act=${act}/>
+
+    ${!week && html`<div class="empty"><p>Нажми «Сгенерировать» — соберу неделю из блюд этого направления.</p></div>`}
+
+    ${week && html`<div>
+      ${blocks.map(b => html`<div class="block block-pair" style=${{"--c":"#2F6B66"}}>
+        <div class="block-rail"><span>${b.days.length>1 ? "готовим один раз" : "один день"}</span></div>
+        <div class="block-days">
+          <article class="day">
+            <div class="day-name">${b.days.map(d=>d.name).join(" и ")}</div>
+            ${b.days[0].meals.map(m => html`<div class="meal">
+              <div class="slot">${m.t}</div>
+              <div class="swap-row">
+                <span class="d-name">${splitDish(m.d[0])[0]}<span class="dose"> ${splitDish(m.d[0])[1]}</span></span>
+                <button class="swap" onClick=${() => setWeek(swapDish(full, week, diet, allerg, b.idx, m.t))}>
+                  заменить</button>
+              </div>
+            </div>`)}
+          </article>
+        </div></div>`)}
+      <div class="add-btns">
+        <button class="btn btn-on" onClick=${() => { act({action:"gen_save", week}); setSaved(true); }}>
+          ${saved ? "Сохранено ✓" : "Сохранить меню"}</button>
+        <button class="btn btn-ghost" onClick=${() => { setWeek(generateDiet(full, diet, allerg)); setSaved(false); }}>
+          Другой вариант</button>
+      </div>
+    </div>`}
   </section>`;
 }
 
@@ -765,6 +921,18 @@ function Shop({ st, plans, act }) {
 }
 
 /* ---------- рецепты ---------- */
+function recipeToText(r) {
+  if (r.text) return r.text;
+  const L = [];
+  if (r.out) L.push("Выход: " + r.out, "");
+  L.push("Ингредиенты:");
+  (r.ing || []).forEach(x => L.push("• " + x));
+  L.push("", "Приготовление:");
+  (r.steps || []).forEach((x, i) => L.push((i+1) + ". " + x));
+  if ((r.tips || []).length) { L.push("", "Советы:"); r.tips.forEach(x => L.push("• " + x)); }
+  return L.join("\n");
+}
+
 function RecipeBody({ r }) {
   if (!r) return null;
   if (r.text) return html`<p class="own">${r.text}</p>`;
@@ -787,7 +955,7 @@ function Recipes({ list, act }) {
           <button class="btn btn-ghost" onClick=${() => setEdit(null)}>Отмена</button>
         </div></div>`
       : html`<div><${RecipeBody} r=${r}/>
-        <button class="btn btn-ghost" onClick=${() => { setEdit(r.id); setText(r.text||""); }}>Изменить</button></div>`}
+        <button class="btn btn-ghost" onClick=${() => { setEdit(r.id); setText(recipeToText(r)); }}>Изменить</button></div>`}
   </article>`)}</section>`;
 }
 
@@ -860,13 +1028,6 @@ function Settings({ st, plans, act, onClose, onSupps, onGen }) {
       style=${{"--c":p.accent}} onClick=${() => act({action:"active", wid:p.id, today:new Date().toISOString().slice(0,10)})}>
       ${p.label}</button>`)}</div>
     <p class="hint">По нему строится вкладка «Сегодня» и напоминания в боте.</p>
-    <h4>Аллергены и исключения</h4>
-    <div class="slots">${(st.plan.allergens || []).map(a => html`<button
-      class=${"slot-b"+(st.user.allergens.includes(a)?" on":"")}
-      onClick=${() => act({action:"allergens", list: st.user.allergens.includes(a)
-        ? st.user.allergens.filter(x => x !== a) : [...st.user.allergens, a]})}>${a}</button>`)}</div>
-    <p class="hint">Блюда с отмеченным помечаются в меню, а случайные меню собираются без них.</p>
-
     <h4>Ещё</h4>
     <button class="btn btn-wide" onClick=${onSupps}>Биодобавки (${st.user.supps.length})</button>
     <button class="btn btn-wide" onClick=${onGen}>Собрать своё меню</button>
@@ -905,8 +1066,10 @@ function Supps({ st, act, onClose }) {
 
 function Generate({ plan, allerg, act, onClose }) {
   const [w, setW] = useState(() => generateWeek(plan, allerg));
+  useEffect(() => { setW(generateWeek(plan, allerg)); }, [allerg.join(",")]);
   return html`<${Sheet} title="Своё меню" onClose=${onClose}>
     <p class="hint">${w.note} Блюда взяты из планов, которые ты уже ешь.</p>
+    <${AllergenPicker} full=${plan} allerg=${allerg} act=${act}/>
     ${w.days.filter((_,i) => [0,2,4,6].includes(i)).map(d => html`<div class="gen-day">
       <div class="gen-name">${d.name}${["Понедельник","Среда","Пятница"].includes(d.name) ? " и следующий день" : ""}</div>
       ${d.meals.map(m => html`<div class="gen-meal"><span class="slot">${m.t}</span>
