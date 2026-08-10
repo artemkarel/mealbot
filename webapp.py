@@ -55,6 +55,8 @@ def user_state(uid):
             "weeks": weeks,
             "recipes": store.all_recipes(),
             "dish_ingredients": store.dish_ingredients(),
+            "dish_tags": store.dish_tags(),
+            "allergens": store.allergen_list(),
             "cafe": store.PLAN.get("cafe", []),      # места из плана диетолога
         },
         "user": {
@@ -66,6 +68,7 @@ def user_state(uid):
                        for w in weeks for e in store.all_extras(uid, w["id"])],
             "supps": store.all_supps(uid),
             "cafe": store.all_cafe(uid),
+            "allergens": [x for x in (store.get_user_setting(uid, "allergens", "") or "").split(",") if x],
         },
     }
 
@@ -105,6 +108,8 @@ async def h_act(request):
             store.set_supp_slots(uid, data["sid"], data.get("slots", ""))
         elif act == "supp_timing":
             store.set_supp_timing(uid, data["sid"], data.get("timing", ""))
+        elif act == "allergens":
+            store.set_user_setting(uid, "allergens", ",".join(data.get("list", [])))
         elif act == "cafe_add":
             store.add_cafe(uid, data["name"][:80], data.get("place", "")[:40],
                            data.get("slot", "Обед"))

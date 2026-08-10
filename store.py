@@ -54,6 +54,14 @@ def dish_ingredients():
     return PLAN.get("dish_ingredients", {})
 
 
+def dish_tags():
+    return PLAN.get("dish_tags", {})
+
+
+def allergen_list():
+    return PLAN.get("allergens", [])
+
+
 @contextmanager
 def conn():
     c = sqlite3.connect(DB_PATH)

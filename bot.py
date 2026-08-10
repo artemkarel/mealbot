@@ -195,6 +195,16 @@ def tznow():
         return datetime.now()
 
 
+def user_allergens(uid):
+    v = store.get_user_setting(uid, "allergens", "") or ""
+    return {x for x in v.split(",") if x}
+
+
+def conflicts(dish, allerg):
+    """Какие из выбранных аллергенов есть в блюде."""
+    return sorted(set(store.dish_tags().get(dish, [])) & allerg)
+
+
 def plan_order():
     """Порядок меню: недели из расписания, затем сохранённые случайные."""
     return [w["id"] for w in store.all_weeks()] + [g["id"] for g in store.all_generated()]
@@ -308,7 +318,8 @@ def cook_plan(w, day, people, uid, force_days=None):
     block = 1                       # сколько дней подряд день целиком повторяется
     while i + block < len(days_list) and meals_equal(day, days_list[i + block]):
         block += 1
-    multi = any(span_of(x) > 1 for m in day["meals"] for x in m["d"])
+    cap = max(block, 2)             # впрок готовим максимум на два дня
+    multi = any(min(span_of(x), cap) > 1 for m in day["meals"] for x in m["d"])
 
     table = store.dish_ingredients()
     agg = {}
@@ -317,12 +328,15 @@ def cook_plan(w, day, people, uid, force_days=None):
             if SKIP_COOK.match(dish):          # заваривается по чашке
                 continue
             ing = table.get(dish) or []
+            # штуками считаем, только если блюдо — это ровно один штучный продукт
+            single = len(ing) == 1 and ing[0][3] == "шт"
             dry = raw = pieces = 0
             for cat, name, badge, unit, qty, note in ing:
                 if qty is None:
                     continue
                 if unit == "шт":
-                    pieces += qty
+                    if single:
+                        pieces += qty
                 elif unit == "г":
                     if cat == "Крупы и лапша":
                         dry += qty                       # варим из сухого
@@ -332,7 +346,7 @@ def cook_plan(w, day, people, uid, force_days=None):
             if not am and not dry and not raw and not pieces:
                 continue
             key = dish.split(" — ")[0]
-            span = min(span_of(dish), force_days) if force_days else span_of(dish)
+            span = min(span_of(dish), force_days or cap)
             a = agg.setdefault(key, {"rid": recipe_for(dish), "am": am, "dry": 0, "raw": 0,
                                      "pieces": 0, "n": 0, "slots": [], "span": span})
             a["span"] = span
@@ -371,6 +385,7 @@ def day_card(w, d, head, uid, cook_days=None):
         return None, None
     prev = day_for_date(w, d - timedelta(days=1), uid)
     same_as_yesterday = meals_equal(day, prev)
+    allerg = user_allergens(uid)
     lines = [f"<b>{esc(head)}</b>",
              f"<i>{esc(day['name'])}, {d:%d.%m} · {esc(w['label'])}</i>", ""]
     sb = supps_by_slot(uid)
@@ -378,7 +393,9 @@ def day_card(w, d, head, uid, cook_days=None):
         if not m["d"] and m["t"] not in sb:
             continue
         lines.append(f"<b>{esc(m['t'])}</b>")
-        lines += [f"  {dish_line(x)}" for x in m["d"]]
+        for x in m["d"]:
+            bad = conflicts(x, allerg)
+            lines.append(f"  {dish_line(x)}" + (f"  ⚠️ <i>{esc(', '.join(bad))}</i>" if bad else ""))
         lines += [f"  💊 <i>{esc(supp_text(sp))}</i>" for sp in sb.get(m["t"], [])]
         lines.append("")
     people = store.get_people(uid)
@@ -1100,6 +1117,7 @@ def settings_kb(uid):
             if w and store.get_user_setting(uid, "auto_next", "1") == "1"
             else "⏭ Автопереход выключен")[:60], "nxtsel")],
         [B(f"💊 Добавки: {len(store.all_supps(uid))}", "supps")],
+        [B("🚫 Аллергены: " + (", ".join(sorted(user_allergens(uid))) or "нет"), "alrg")],
         [B(f"🌅 Утром меню дня: {mt if rem_on(uid, 'morning_on') else 'выкл'}", "remmorn")],
         [B(f"🌙 Вечером о готовке: {'вкл' if rem_on(uid, 'evening_on') else 'выкл'}", "remeve")],
         [B(f"🛒 Напоминать о закупах: {'вкл' if rem_on(uid, 'shop_on') else 'выкл'}", "remshop")],
@@ -1214,6 +1232,33 @@ async def cb_people(c: CallbackQuery):
     else:
         await render_shop_here(c)
     await c.answer("Готово")
+
+
+@dp.callback_query(F.data == "alrg")
+async def cb_allergens(c: CallbackQuery):
+    uid = c.from_user.id
+    cur = user_allergens(uid)
+    lst = store.allergen_list()
+    rows = [[B(("✅ " if a in cur else "⬜ ") + a, f"alrgt:{i}")] for i, a in enumerate(lst)]
+    rows.append([B("‹ Настройки", "settings"), B("⌂ Меню", "menu")])
+    n = sum(1 for d in store.dish_tags().values() if not (set(d) & cur))
+    await safe_edit(c.message,
+                    "🚫 <b>Аллергены и исключения</b>\n\n"
+                    "<i>Блюда с отмеченным помечаются ⚠️ в меню, а случайные меню "
+                    "собираются без них.</i>\n\n"
+                    f"Подходит блюд: <b>{n}</b> из {len(store.dish_tags())}", KB(rows))
+    await c.answer()
+
+
+@dp.callback_query(F.data.startswith("alrgt:"))
+async def cb_allergen_toggle(c: CallbackQuery):
+    uid = c.from_user.id
+    lst = store.allergen_list()
+    a = lst[int(c.data.split(":", 1)[1])]
+    cur = user_allergens(uid)
+    cur.symmetric_difference_update({a})
+    store.set_user_setting(uid, "allergens", ",".join(sorted(cur)))
+    await cb_allergens(c)
 
 
 @dp.callback_query(F.data == "remmorn")
@@ -1758,8 +1803,9 @@ BLOCKS = [("Понедельник", "Вторник"), ("Среда", "Четв
 PANTRY_CATS = {"Крупы и лапша", "Готовое, напитки, бакалея"}
 
 
-def meal_pool():
-    """Все варианты приёмов пищи из готовых планов: слот -> список наборов блюд."""
+def meal_pool(allerg=frozenset()):
+    """Все варианты приёмов пищи из готовых планов: слот -> список наборов блюд.
+    Блюда с выбранными аллергенами не берём."""
     pool = {s: [] for s in SLOTS}
     seen = {s: set() for s in SLOTS}
     for w in store.all_weeks():
@@ -1771,6 +1817,8 @@ def meal_pool():
                 dishes = tuple(d for d in m.get("d", []) if d.strip())
                 if not dishes or any("ресторан" in d.lower() for d in dishes):
                     continue          # ресторанные обеды не готовим и не закупаем
+                if allerg and any(conflicts(d, allerg) for d in dishes):
+                    continue          # не подходит по аллергенам
                 if dishes in seen[t]:
                     continue
                 seen[t].add(dishes)
@@ -1814,8 +1862,9 @@ def shop_for_days(days):
     return items, unknown
 
 
-def generate_week():
-    pool = meal_pool()
+def generate_week(uid=None):
+    allerg = user_allergens(uid) if uid else set()
+    pool = meal_pool(allerg)
     used = {s: set() for s in SLOTS}
     days = []
     for block in BLOCKS:
@@ -1859,7 +1908,7 @@ def draft_kb():
 
 @dp.callback_query(F.data == "gen")
 async def cb_generate(c: CallbackQuery):
-    w = generate_week()
+    w = generate_week(c.from_user.id)
     _draft[c.from_user.id] = w
     await safe_edit(c.message, clip(draft_text(w)), draft_kb())
     await c.answer("Собрал меню")
