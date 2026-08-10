@@ -738,9 +738,10 @@ async def auth_mw(handler, event, data):
 
 
 # ---------- menu ----------
-def menu_kb(uid=None):
+def menu_kb(uid=None, chat_id=None):
     rows = []
-    if WEBAPP_URL:
+    private = chat_id is None or chat_id > 0        # у групп id отрицательный
+    if WEBAPP_URL and private:
         rows.append([InlineKeyboardButton(text="📱 Открыть приложение",
                                           web_app=WebAppInfo(url=WEBAPP_URL))])
     if uid is not None and not active_plan(uid):
@@ -813,23 +814,40 @@ def menu_text(uid):
     return head + "\n" + "\n".join(lines)
 
 
+BOT_USERNAME = ""          # заполняется при запуске
+
+
+async def group_hint(m: Message):
+    """В группе бот не работает: у каждого своё меню и свои отметки."""
+    kb = None
+    if BOT_USERNAME:
+        kb = KB([[InlineKeyboardButton(text="Открыть бота",
+                                       url=f"https://t.me/{BOT_USERNAME}")]])
+    await m.answer("Здесь я не работаю — у каждого своё меню, свои закупки и напоминания.\n"
+                   "Напиши мне в личку.", reply_markup=kb)
+
+
 @dp.message(CommandStart())
 async def start(m: Message, state: FSMContext):
     await state.clear()
+    if m.chat.id < 0:
+        return await group_hint(m)
     uid = m.from_user.id
     known = m.chat.id in store.all_chats()
     store.add_chat(m.chat.id)
     await del_msg(m.chat.id, m.message_id)
     if not known:
         reschedule()                       # у нового человека — свои напоминания
-    await show(m.chat.id, menu_text(uid), menu_kb(uid))
+    await show(m.chat.id, menu_text(uid), menu_kb(uid, m.chat.id))
 
 
 @dp.message(Command("menu"))
 async def menu_cmd(m: Message, state: FSMContext):
     await state.clear()
+    if m.chat.id < 0:
+        return await group_hint(m)
     await del_msg(m.chat.id, m.message_id)
-    await show(m.chat.id, menu_text(m.from_user.id), menu_kb(m.from_user.id))
+    await show(m.chat.id, menu_text(m.from_user.id), menu_kb(m.from_user.id, m.chat.id))
 
 
 @dp.message(Command("myid"))
@@ -883,6 +901,11 @@ ADMIN_CMDS = PUBLIC_CMDS + [
 
 async def setup_commands():
     """Обычные видят короткий список команд, владелец — полный."""
+    global BOT_USERNAME
+    try:
+        BOT_USERNAME = (await bot.me()).username or ""
+    except Exception:
+        logging.warning("не смог узнать имя бота")
     try:
         await bot.set_chat_menu_button(
             menu_button=MenuButtonWebApp(text="Приложение", web_app=WebAppInfo(url=WEBAPP_URL))
@@ -1031,7 +1054,7 @@ async def cmd_restart(m: Message):
 
 @dp.callback_query(F.data == "menu")
 async def cb_menu(c: CallbackQuery):
-    await safe_edit(c.message, menu_text(c.from_user.id), menu_kb(c.from_user.id))
+    await safe_edit(c.message, menu_text(c.from_user.id), menu_kb(c.from_user.id, c.message.chat.id))
     await c.answer()
 
 
@@ -1880,11 +1903,14 @@ async def on_document(m: Message):
 # ---------- всё остальное ----------
 @dp.message()
 async def fallback(m: Message, state: FSMContext):
-    """Непонятное сообщение убираем и показываем главный экран."""
+    """Непонятное сообщение убираем и показываем главный экран.
+    В группах молчим: там чужие сообщения удалять нельзя."""
+    if m.chat.id < 0:
+        return
     await state.clear()
     store.add_chat(m.chat.id)
     await del_msg(m.chat.id, m.message_id)
-    await show(m.chat.id, menu_text(m.from_user.id), menu_kb(m.from_user.id))
+    await show(m.chat.id, menu_text(m.from_user.id), menu_kb(m.from_user.id, m.chat.id))
 
 
 # ---------- напоминания (личные у каждого) ----------
@@ -1996,7 +2022,7 @@ async def main():
             with open(UPDATE_FLAG, encoding="utf-8") as f:
                 cid = int(f.read().strip())
             await show(cid, f"✅ Бот снова на связи.\n🏷 {version_line()}\n\n" + menu_text(cid),
-                       menu_kb(cid))
+                       menu_kb(cid, cid))
         except Exception:
             logging.exception("update notify")
         finally:
