@@ -77,6 +77,7 @@ def user_state(uid):
             "allergens": [x for x in (store.get_user_setting(uid, "allergens", "") or "").split(",") if x],
             "meals_on": store.get_user_setting(uid, "meals_on", "0") == "1",
             "meal_times": {s: store.get_user_setting(uid, "mt:" + s, MEAL_DEFAULTS[s]) for s in SLOTS},
+            "meal_slots": {s: store.get_user_setting(uid, "mon:" + s, "1") == "1" for s in SLOTS},
         },
     }
 
@@ -122,6 +123,9 @@ async def h_act(request):
             for slot, t in (data.get("times") or {}).items():
                 if slot in MEAL_DEFAULTS:
                     store.set_user_setting(uid, "mt:" + slot, str(t)[:5])
+            for slot, v in (data.get("slots") or {}).items():
+                if slot in MEAL_DEFAULTS:
+                    store.set_user_setting(uid, "mon:" + slot, "1" if v else "0")
         elif act == "allergens":
             store.set_user_setting(uid, "allergens", ",".join(data.get("list", [])))
         elif act == "cafe_add":

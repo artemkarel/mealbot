@@ -1104,6 +1104,11 @@ def meal_time(uid, slot):
     return store.get_user_setting(uid, "mt:" + slot, MEAL_DEFAULTS[slot])
 
 
+def meal_on(uid, slot):
+    """Нужно ли напоминать про этот приём — у каждого свой набор."""
+    return store.get_user_setting(uid, "mon:" + slot, "1") == "1"
+
+
 def shift_time(hhmm, minutes):
     """Сдвинуть время на N минут в пределах суток."""
     try:
@@ -1135,7 +1140,8 @@ def settings_kb(uid):
             if w and store.get_user_setting(uid, "auto_next", "1") == "1"
             else "⏭ Автопереход выключен")[:60], "nxtsel")],
         [B(f"💊 Добавки: {len(store.all_supps(uid))}", "supps")],
-        [B(f"🍽 Напоминать о приёмах пищи: {'вкл' if rem_on(uid, 'meals_on', '0') else 'выкл'}", "meals")],
+        [B("🍽 Напоминания о еде: " + (f"{sum(1 for s in SLOTS if meal_on(uid, s))} из {len(SLOTS)}"
+           if rem_on(uid, "meals_on", "0") else "выкл"), "meals")],
         [B(f"🌅 Утром меню дня: {mt if rem_on(uid, 'morning_on') else 'выкл'}", "remmorn")],
         [B(f"🌙 Вечером о готовке: {'вкл' if rem_on(uid, 'evening_on') else 'выкл'}", "remeve")],
         [B(f"🛒 Напоминать о закупах: {'вкл' if rem_on(uid, 'shop_on') else 'выкл'}", "remshop")],
@@ -1288,13 +1294,14 @@ async def cb_meals(c: CallbackQuery):
     rows = [[B(("🔔 Напоминания включены" if on else "🔕 Напоминания выключены"), "mealson")]]
     if on:
         for i, slot in enumerate(SLOTS):
-            rows.append([B(f"{slot} · {meal_time(uid, slot)}", "noop"),
+            mark = "✅" if meal_on(uid, slot) else "⬜"
+            rows.append([B(f"{mark} {slot} · {meal_time(uid, slot)}", f"mtog:{i}"),
                          B("−15", f"mtm:{i}"), B("+15", f"mtp:{i}")])
     rows.append([B("‹ Настройки", "settings"), B("⌂ Меню", "menu")])
     await safe_edit(c.message,
                     "🍽 <b>Напоминания о приёмах пищи</b>\n\n"
-                    "<i>Перед каждым приёмом пришлю, что съесть и какие добавки принять. "
-                    "Время можно сдвигать по 15 минут.</i>", KB(rows))
+                    "<i>Нажми на название, чтобы включить или выключить приём. "
+                    "Время сдвигается кнопками по 15 минут.</i>", KB(rows))
     await c.answer()
 
 
@@ -1302,6 +1309,15 @@ async def cb_meals(c: CallbackQuery):
 async def cb_meals_toggle(c: CallbackQuery):
     uid = c.from_user.id
     store.set_user_setting(uid, "meals_on", "0" if rem_on(uid, "meals_on", "0") else "1")
+    reschedule()
+    await cb_meals(c)
+
+
+@dp.callback_query(F.data.startswith("mtog:"))
+async def cb_meal_toggle(c: CallbackQuery):
+    uid = c.from_user.id
+    slot = SLOTS[int(c.data.split(":", 1)[1])]
+    store.set_user_setting(uid, "mon:" + slot, "0" if meal_on(uid, slot) else "1")
     reschedule()
     await cb_meals(c)
 
@@ -2159,6 +2175,8 @@ def reschedule():
                           id=f"e:{uid}", misfire_grace_time=3600, coalesce=True)
         if rem_on(uid, "meals_on", "0"):          # по умолчанию выключено
             for si, slot in enumerate(SLOTS):
+                if not meal_on(uid, slot):
+                    continue
                 try:
                     hh, mm = [int(x) for x in meal_time(uid, slot).split(":")]
                 except Exception:
