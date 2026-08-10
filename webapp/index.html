@@ -299,7 +299,8 @@ function cookPlan(plan, day, people, table, forceDays) {
     return { ...a,
              total: byPiece ? Math.ceil(a.pieces * people * days) : (a.amount ? a.amount.n * k : 0),
              unit: byPiece ? "шт" : (a.amount?.unit || ""),
-             base: a.amount?.n || 0, portions: k,
+             base: a.amount?.n || 0, baseUnit: a.amount?.unit || "",   // единица из меню, не итоговая
+             portions: k,
              dryTotal: Math.round(a.dry * people * days / 5) * 5,
              rawTotal: Math.round(a.raw * people * days / 10) * 10 };
   });
@@ -472,7 +473,7 @@ function Today({ plan, day, supps, people, table, recipes, onRecipe, onPick }) {
                onClick=${it.rid ? () => onRecipe(it.rid) : null}>
             <div class="cook-n">${it.name}
               <span class="cook-d">${[...it.slots].join(", ").toLowerCase()}
-                ${it.portions > 1 ? ` · ${it.base ? it.base + " " + it.unit + " × " : ""}${it.portions}` : ""}</span></div>
+                ${it.portions > 1 ? ` · ${it.base ? it.base + " " + it.baseUnit + " × " : ""}${it.portions}` : ""}</span></div>
             <div class="cook-q">
               ${it.total > 0 && html`<b class="mono">${it.total} ${it.unit}</b>`}
               ${it.dryTotal > 0 && html`<span class="cook-out mono">сварить ${it.dryTotal} г сухой</span>`}
