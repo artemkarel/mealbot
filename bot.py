@@ -690,8 +690,7 @@ def menu_text(uid):
         left = [it for it in sel if it["iid"] not in checks]
         if sel and left:
             name = TRIP_SHORT[trip].split(" ", 1)[1]      # без цветного кружка
-            lines.append(f"🛒 {name}: осталось {len(left)} из {len(sel)}"
-                         f"\n   {bar(len(sel) - len(left), len(sel), 10)}")
+            lines.append(f"🛒 {name}: осталось {len(left)} из {len(sel)}")
             break
     else:
         if items:
