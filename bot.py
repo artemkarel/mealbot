@@ -1117,7 +1117,6 @@ def settings_kb(uid):
             if w and store.get_user_setting(uid, "auto_next", "1") == "1"
             else "⏭ Автопереход выключен")[:60], "nxtsel")],
         [B(f"💊 Добавки: {len(store.all_supps(uid))}", "supps")],
-        [B("🚫 Аллергены: " + (", ".join(sorted(user_allergens(uid))) or "нет"), "alrg")],
         [B(f"🌅 Утром меню дня: {mt if rem_on(uid, 'morning_on') else 'выкл'}", "remmorn")],
         [B(f"🌙 Вечером о готовке: {'вкл' if rem_on(uid, 'evening_on') else 'выкл'}", "remeve")],
         [B(f"🛒 Напоминать о закупах: {'вкл' if rem_on(uid, 'shop_on') else 'выкл'}", "remshop")],
@@ -1234,18 +1233,20 @@ async def cb_people(c: CallbackQuery):
     await c.answer("Готово")
 
 
-@dp.callback_query(F.data == "alrg")
-async def cb_allergens(c: CallbackQuery):
+@dp.callback_query(F.data == "gen")
+async def cb_gen_setup(c: CallbackQuery):
+    """Перед сборкой меню — что исключить."""
     uid = c.from_user.id
     cur = user_allergens(uid)
     lst = store.allergen_list()
     rows = [[B(("✅ " if a in cur else "⬜ ") + a, f"alrgt:{i}")] for i, a in enumerate(lst)]
-    rows.append([B("‹ Настройки", "settings"), B("⌂ Меню", "menu")])
+    rows.append([B("🎲 Собрать меню", "genrun")])
+    rows.append([B("‹ Расписание", "schweeks"), B("⌂ Меню", "menu")])
     n = sum(1 for d in store.dish_tags().values() if not (set(d) & cur))
     await safe_edit(c.message,
-                    "🚫 <b>Аллергены и исключения</b>\n\n"
-                    "<i>Блюда с отмеченным помечаются ⚠️ в меню, а случайные меню "
-                    "собираются без них.</i>\n\n"
+                    "🎲 <b>Своё меню</b>\n\n"
+                    "<i>Отметь, чего в меню быть не должно. Блюда с этим бот не возьмёт "
+                    "и будет помечать ⚠️ в готовых неделях.</i>\n\n"
                     f"Подходит блюд: <b>{n}</b> из {len(store.dish_tags())}", KB(rows))
     await c.answer()
 
@@ -1258,7 +1259,7 @@ async def cb_allergen_toggle(c: CallbackQuery):
     cur = user_allergens(uid)
     cur.symmetric_difference_update({a})
     store.set_user_setting(uid, "allergens", ",".join(sorted(cur)))
-    await cb_allergens(c)
+    await cb_gen_setup(c)
 
 
 @dp.callback_query(F.data == "remmorn")
@@ -1744,7 +1745,12 @@ async def cb_recipe_edit(c: CallbackQuery, state: FSMContext):
     rid = c.data.split(":", 1)[1]
     await state.update_data(rid=rid)
     await state.set_state(Edit.recipe_text)
-    await safe_edit(c.message, "✏️ Пришли новый текст рецепта одним сообщением — сохраню как есть.",
+    r = store.get_recipe(rid)
+    cur = re.sub(r"<[^>]+>", "", recipe_text(r)) if r else ""
+    await safe_edit(c.message,
+                    "✏️ <b>Правка рецепта</b>\n"
+                    "<i>Нажми на текст ниже — он скопируется. Вставь, поправь и пришли обратно.</i>\n\n"
+                    f"<pre>{esc(clip(cur, 3000))}</pre>",
                     KB([[B("✖︎ Отмена", f"rv:{rid}")]]))
     await c.answer()
 
@@ -1901,12 +1907,13 @@ def draft_text(w):
 
 
 def draft_kb():
-    return KB([[B("🔄 Другой вариант", "gen")],
+    return KB([[B("🔄 Другой вариант", "genrun")],
                [B("💾 Сохранить меню", "gsave")],
+               [B("🚫 Что исключить", "gen")],
                [B("‹ Расписание", "schweeks"), B("⌂ Меню", "menu")]])
 
 
-@dp.callback_query(F.data == "gen")
+@dp.callback_query(F.data == "genrun")
 async def cb_generate(c: CallbackQuery):
     w = generate_week(c.from_user.id)
     _draft[c.from_user.id] = w

@@ -57,6 +57,8 @@ def user_state(uid):
             "dish_ingredients": store.dish_ingredients(),
             "dish_tags": store.dish_tags(),
             "allergens": store.allergen_list(),
+            "diets": store.PLAN.get("diets", []),
+            "library": store.PLAN.get("library", []),
             "cafe": store.PLAN.get("cafe", []),      # места из плана диетолога
         },
         "user": {
