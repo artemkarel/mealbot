@@ -259,6 +259,8 @@ body{margin:0;background:#EEF1EC}
 .cafe-row:first-child{border-top:none}
 .cafe-n{font-size:14px;line-height:1.3}
 .cafe-p{font-size:11.5px;color:var(--muted);margin-top:2px}
+.warn{font-size:10.5px;color:var(--amber);margin-left:6px;white-space:nowrap}
+.dishes li.bad .d-name{color:var(--muted)}
 </style>
 </head>
 <body>
@@ -329,6 +331,12 @@ async function api(path, payload) {
   return r.json();
 }
 
+/* ---------- аллергены ---------- */
+function conflicts(dish, tags, allerg) {
+  if (!allerg?.length) return [];
+  return (tags[dish] || []).filter(t => allerg.includes(t));
+}
+
 /* ---------- сколько варить ---------- */
 function parseAmount(dish) {          // «Отварная гречка — 180 г» -> {n:180, unit:"г"}
   const m = dish.match(/—\s*(\d+)(?:\s*[–-]\s*\d+)?\s*(г|мл|шт)(?![а-я])/);
@@ -346,24 +354,27 @@ function cookPlan(plan, day, people, table, forceDays) {
   };
   let block = 1;                     // сколько дней подряд день целиком повторяется
   while (plan.days[i+block] && sameMeals(day, plan.days[i+block])) block++;
-  const multi = day.meals.some(m => m.d.some(x => spanOf(x) > 1));
+  const cap = Math.max(block, 2);   // впрок готовим максимум на два дня
+  const multi = day.meals.some(m => m.d.some(x => Math.min(spanOf(x), cap) > 1));
 
   const agg = new Map();
   day.meals.forEach(m => m.d.forEach(dish => {
     if (/^(Вода|Кофе|Зелёный чай|Ромашковый чай)/.test(dish)) return;   // заваривается по чашке
     const ing = table[dish] || [];
+    // штуками считаем, только если блюдо — это ровно один штучный продукт
+    const single = ing.length === 1 && ing[0][3] === "шт";
     const amount = parseAmount(dish);
     let dry = 0, raw = 0, pieces = 0;
     ing.forEach(([cat, name, badge, unit, qty, note]) => {
       if (qty === null || qty === undefined) return;
-      if (unit === "шт") { pieces += qty; return; }                   // считаем штуками
+      if (unit === "шт") { if (single) pieces += qty; return; }        // считаем штуками
       if (unit !== "г") return;
       if (cat === "Крупы и лапша") dry += qty;                        // варим из сухого
       else if ((note || "").includes("сырой вес")) raw += qty;        // усохнет при готовке
     });
     if (!amount && !dry && !raw && !ing.some(x => x[4])) return;      // готовить нечего
     const name = splitDish(dish)[0];
-    const span = forceDays ? Math.min(spanOf(dish), forceDays) : spanOf(dish);
+    const span = Math.min(spanOf(dish), forceDays || cap);
     if (!agg.has(name)) agg.set(name, {name, rid: recipeIdFor(dish), amount, dry:0, raw:0, pieces:0, n:0, span, slots:new Set()});
     const a = agg.get(name);
     a.n += 1; a.dry += dry; a.raw += raw; a.pieces += pieces; a.span = span; a.slots.add(m.t);
@@ -403,13 +414,14 @@ function shopForDays(days, table) {
   });
   return [...agg.values()].sort((a,b) => a[6]-b[6] || catRank(a[0])-catRank(b[0]) || a[1].localeCompare(b[1]));
 }
-function generateWeek(plan) {
+function generateWeek(plan, allerg) {
   const pool = {}, seen = {};
   SLOTS.forEach(s => { pool[s] = []; seen[s] = new Set(); });
   plan.weeks.filter(w => !String(w.id).startsWith("g")).forEach(w => w.days.forEach(day => day.meals.forEach(m => {
     if (!pool[m.t]) return;
     const dishes = m.d.filter(x => x.trim());
     if (!dishes.length || dishes.some(x => x.toLowerCase().includes("ресторан"))) return;
+    if (dishes.some(x => conflicts(x, plan.dish_tags || {}, allerg).length)) return;
     const key = dishes.join("|");
     if (seen[m.t].has(key)) return;
     seen[m.t].add(key); pool[m.t].push(dishes);
@@ -500,8 +512,10 @@ function App() {
       <main class="main">
         ${tab==="today" && html`<${Today} plan=${active} day=${today} supps=${st.user.supps}
             people=${people} table=${st.plan.dish_ingredients} recipes=${st.plan.recipes}
+            tags=${st.plan.dish_tags} allerg=${st.user.allergens}
             onRecipe=${setOpenRec} onPick=${() => setSheet("settings")}/>`}
         ${tab==="menu" && html`<${Menu} plans=${plans} activeId=${st.user.active} supps=${st.user.supps}
+            tags=${st.plan.dish_tags} allerg=${st.user.allergens}
             onActivate=${wid => act({action:"active", wid, today:new Date().toISOString().slice(0,10)})}
             onRecipe=${setOpenRec} onGenerate=${() => setSheet("gen")}/>`}
         ${tab==="shop" && html`<${Shop} st=${st} plans=${plans} act=${act}/>`}
@@ -515,12 +529,12 @@ function App() {
       ${sheet==="settings" && html`<${Settings} st=${st} plans=${plans} act=${act}
           onClose=${()=>setSheet(null)} onSupps=${()=>setSheet("supps")} onGen=${()=>setSheet("gen")}/>`}
       ${sheet==="supps" && html`<${Supps} st=${st} act=${act} onClose=${()=>setSheet("settings")}/>`}
-      ${sheet==="gen" && html`<${Generate} plan=${st.plan} act=${act} onClose=${()=>setSheet(null)}/>`}
+      ${sheet==="gen" && html`<${Generate} plan=${st.plan} allerg=${st.user.allergens} act=${act} onClose=${()=>setSheet(null)}/>`}
     </div>`;
 }
 
 /* ---------- сегодня ---------- */
-function Today({ plan, day, supps, people, table, recipes, onRecipe, onPick }) {
+function Today({ plan, day, supps, people, table, recipes, tags, allerg, onRecipe, onPick }) {
   const [cookDays, setCookDays] = useState(null);   // null — на весь блок
   useEffect(() => setCookDays(null), [day?.name, plan?.id]);
   if (!plan || !day) return html`<div class="empty"><p>Меню на сегодня не выбрано.</p>
@@ -533,7 +547,7 @@ function Today({ plan, day, supps, people, table, recipes, onRecipe, onPick }) {
       <span class="stamp-note">${plan.label}</span>
     </div>
 
-    <${DayCard} day=${day} supps=${supps} onRecipe=${onRecipe} big=${true}/>
+    <${DayCard} day=${day} supps=${supps} onRecipe=${onRecipe} big=${true} tags=${tags} allerg=${allerg}/>
 
     ${c.repeat && !cookDays && html`
       <div class="cook cook-quiet">
@@ -569,7 +583,7 @@ function Today({ plan, day, supps, people, table, recipes, onRecipe, onPick }) {
   </section>`;
 }
 
-function DayCard({ day, supps, onRecipe, big }) {
+function DayCard({ day, supps, onRecipe, big, tags, allerg }) {
   const byslot = {};
   (supps||[]).forEach(s => (s.slots||"").split(",").filter(Boolean).forEach(sl => (byslot[sl] = byslot[sl]||[]).push(s)));
   Object.values(byslot).forEach(l => l.sort((a,b) => TIMING_ORDER.indexOf(a.timing||"") - TIMING_ORDER.indexOf(b.timing||"")));
@@ -584,8 +598,10 @@ function DayCard({ day, supps, onRecipe, big }) {
           ${m.d.map(dish => {
             const [name, amt] = splitDish(dish);
             const rid = recipeIdFor(dish);
-            return html`<li><span class="d-name">${name}
+            const bad = conflicts(dish, tags || {}, allerg);
+            return html`<li class=${bad.length ? "bad" : ""}><span class="d-name">${name}
               ${rid && html`<button class="rx" onClick=${() => onRecipe(rid)}>рецепт</button>`}
+              ${bad.length > 0 && html`<span class="warn">⚠️ ${bad.join(", ")}</span>`}
             </span><span class="dose">${amt}</span></li>`;
           })}
           ${extra.map(s => html`<li class="supp-li"><span class="d-name">💊 ${s.name}</span>
@@ -596,7 +612,7 @@ function DayCard({ day, supps, onRecipe, big }) {
 }
 
 /* ---------- меню ---------- */
-function Menu({ plans, activeId, supps, onActivate, onRecipe, onGenerate }) {
+function Menu({ plans, activeId, supps, tags, allerg, onActivate, onRecipe, onGenerate }) {
   const [openId, setOpenId] = useState(activeId || plans[0]?.id);
   const plan = plans.find(p => p.id === openId) || plans[0];
   const blocks = [];
@@ -621,7 +637,7 @@ function Menu({ plans, activeId, supps, onActivate, onRecipe, onGenerate }) {
       <div class=${"block" + (block.length>1 ? " block-pair" : "")} style=${{"--c":plan.accent}}>
         ${block.length>1 && html`<div class="block-rail"><span>готовим один раз</span></div>`}
         <div class="block-days">
-          ${block.map(d => html`<${DayCard} day=${d} supps=${supps} onRecipe=${onRecipe}/>`)}
+          ${block.map(d => html`<${DayCard} day=${d} supps=${supps} onRecipe=${onRecipe} tags=${tags} allerg=${allerg}/>`)}
         </div></div>`)}
   </section>`;
 }
@@ -844,6 +860,13 @@ function Settings({ st, plans, act, onClose, onSupps, onGen }) {
       style=${{"--c":p.accent}} onClick=${() => act({action:"active", wid:p.id, today:new Date().toISOString().slice(0,10)})}>
       ${p.label}</button>`)}</div>
     <p class="hint">По нему строится вкладка «Сегодня» и напоминания в боте.</p>
+    <h4>Аллергены и исключения</h4>
+    <div class="slots">${(st.plan.allergens || []).map(a => html`<button
+      class=${"slot-b"+(st.user.allergens.includes(a)?" on":"")}
+      onClick=${() => act({action:"allergens", list: st.user.allergens.includes(a)
+        ? st.user.allergens.filter(x => x !== a) : [...st.user.allergens, a]})}>${a}</button>`)}</div>
+    <p class="hint">Блюда с отмеченным помечаются в меню, а случайные меню собираются без них.</p>
+
     <h4>Ещё</h4>
     <button class="btn btn-wide" onClick=${onSupps}>Биодобавки (${st.user.supps.length})</button>
     <button class="btn btn-wide" onClick=${onGen}>Собрать своё меню</button>
@@ -880,8 +903,8 @@ function Supps({ st, act, onClose }) {
   <//>`;
 }
 
-function Generate({ plan, act, onClose }) {
-  const [w, setW] = useState(() => generateWeek(plan));
+function Generate({ plan, allerg, act, onClose }) {
+  const [w, setW] = useState(() => generateWeek(plan, allerg));
   return html`<${Sheet} title="Своё меню" onClose=${onClose}>
     <p class="hint">${w.note} Блюда взяты из планов, которые ты уже ешь.</p>
     ${w.days.filter((_,i) => [0,2,4,6].includes(i)).map(d => html`<div class="gen-day">
@@ -891,7 +914,7 @@ function Generate({ plan, act, onClose }) {
     </div>`)}
     <div class="add-btns">
       <button class="btn" onClick=${() => { act({action:"gen_save", week:w}); onClose(); }}>Сохранить меню</button>
-      <button class="btn btn-ghost" onClick=${() => setW(generateWeek(plan))}>Другой вариант</button>
+      <button class="btn btn-ghost" onClick=${() => setW(generateWeek(plan, allerg))}>Другой вариант</button>
     </div>
   <//>`;
 }
