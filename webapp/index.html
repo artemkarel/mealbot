@@ -202,6 +202,63 @@ body{margin:0;background:#EEF1EC}
 .trip-body .grp-body{border-radius:8px}
 @keyframes drop{from{opacity:.4;transform:translateY(-4px)}}
 .cook-link{display:block;font-size:12.5px;color:var(--brand);margin-top:1px}
+
+/* ─── движение: мягкое, без резких скачков ─── */
+:root{--ease:cubic-bezier(.22,.61,.36,1); --fast:.16s; --mid:.26s}
+
+/* появление содержимого вкладки */
+.main > section{animation:enter .32s var(--ease) both}
+@keyframes enter{from{opacity:0;transform:translateY(10px)}}
+
+/* карточки въезжают по очереди — ощущение «раскладывания» */
+.main > section > .day,
+.main > section > .card,
+.main > section > .grp,
+.main > section > .cook,
+.trips > .trip-box{animation:enter .34s var(--ease) both}
+.trips > .trip-box:nth-child(2){animation-delay:.04s}
+.trips > .trip-box:nth-child(3){animation-delay:.08s}
+.main > section > *:nth-child(2){animation-delay:.03s}
+.main > section > *:nth-child(3){animation-delay:.06s}
+.main > section > *:nth-child(4){animation-delay:.09s}
+
+/* нажатия */
+.btn,.tool,.chip,.trip,.slot-b,.cook-switch button,.tabs button,.counter button,.gear{
+  transition:background var(--fast) var(--ease),color var(--fast) var(--ease),
+             border-color var(--fast) var(--ease),transform var(--fast) var(--ease),
+             box-shadow var(--mid) var(--ease)}
+.btn:active,.tool:active,.chip:active,.slot-b:active{transform:scale(.97)}
+.trip:active{transform:scale(.995)}
+.counter button:active,.gear:active{transform:scale(.9)}
+
+/* строки списка */
+.row{transition:background var(--fast) var(--ease),opacity var(--mid) var(--ease)}
+.row:active{background:var(--bg)}
+.row-n,.row-q{transition:color var(--mid) var(--ease),text-decoration-color var(--mid) var(--ease)}
+.tick{transition:background var(--fast) var(--ease),border-color var(--fast) var(--ease),transform var(--fast) var(--ease)}
+.row input:checked + .tick{transform:scale(1.06)}
+.tick::after{transition:transform .2s var(--ease)}
+
+/* раскрытие захода */
+.trip-body{animation:drop .28s var(--ease) both}
+@keyframes drop{from{opacity:0;transform:translateY(-6px)}}
+.chev{transition:transform .28s var(--ease)}
+
+/* полосы и шторки */
+.gauge-bar i{transition:width .5s var(--ease)}
+.sheet{animation:rise .34s var(--ease)}
+@keyframes rise{from{transform:translateY(26px);opacity:.6}}
+.sheet-wrap{animation:fade .22s var(--ease)}
+.fade{animation:enter .32s var(--ease) both}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation:none!important;transition:none!important}
+}
+/* кафе */
+.cafe-row{display:flex;align-items:center;justify-content:space-between;gap:12px;padding:11px 14px;border-top:1px solid var(--line)}
+.cafe-row:first-child{border-top:none}
+.cafe-n{font-size:14px;line-height:1.3}
+.cafe-p{font-size:11.5px;color:var(--muted);margin-top:2px}
 </style>
 </head>
 <body>
@@ -281,9 +338,15 @@ function parseAmount(dish) {          // «Отварная гречка — 180
 function cookPlan(plan, day, people, table, forceDays) {
   const i = plan.days.findIndex(d => d.name === day.name);
   const repeat = sameMeals(day, plan.days[i-1]);
-  let block = 1;                      // сколько дней подряд едим то же самое
+  // сколько дней подряд, начиная с сегодня, встречается конкретное блюдо
+  const spanOf = (dish) => {
+    let n = 0;
+    while (plan.days[i+n] && plan.days[i+n].meals.some(m => m.d.includes(dish))) n++;
+    return Math.max(1, n);
+  };
+  let block = 1;                     // сколько дней подряд день целиком повторяется
   while (plan.days[i+block] && sameMeals(day, plan.days[i+block])) block++;
-  const days = forceDays || block;    // можно готовить не на весь блок
+  const multi = day.meals.some(m => m.d.some(x => spanOf(x) > 1));
 
   const agg = new Map();
   day.meals.forEach(m => m.d.forEach(dish => {
@@ -300,12 +363,14 @@ function cookPlan(plan, day, people, table, forceDays) {
     });
     if (!amount && !dry && !raw && !ing.some(x => x[4])) return;      // готовить нечего
     const name = splitDish(dish)[0];
-    if (!agg.has(name)) agg.set(name, {name, rid: recipeIdFor(dish), amount, dry:0, raw:0, pieces:0, n:0, slots:new Set()});
+    const span = forceDays ? Math.min(spanOf(dish), forceDays) : spanOf(dish);
+    if (!agg.has(name)) agg.set(name, {name, rid: recipeIdFor(dish), amount, dry:0, raw:0, pieces:0, n:0, span, slots:new Set()});
     const a = agg.get(name);
-    a.n += 1; a.dry += dry; a.raw += raw; a.pieces += pieces; a.slots.add(m.t);
+    a.n += 1; a.dry += dry; a.raw += raw; a.pieces += pieces; a.span = span; a.slots.add(m.t);
   }));
 
   const items = [...agg.values()].map(a => {
+    const days = a.span;                              // у каждого блюда свой горизонт
     const k = people * days * a.n;                    // порций всего
     // штучное показываем штуками: «4 шт» понятнее, чем «1000 г»
     const byPiece = a.pieces > 0 && a.amount?.unit !== "шт";
@@ -317,7 +382,7 @@ function cookPlan(plan, day, people, table, forceDays) {
              dryTotal: Math.round(a.dry * people * days / 5) * 5,
              rawTotal: Math.round(a.raw * people * days / 10) * 10 };
   });
-  return { days, block, repeat, items };
+  return { days: forceDays ? Math.min(block, forceDays) : block, block, multi, repeat, items };
 }
 
 /* ---------- случайное меню ---------- */
@@ -426,7 +491,7 @@ function App() {
           </div>
         </div>
         <nav class="tabs">
-          ${[["today","Сегодня"],["menu","Меню"],["shop","Закупки"],["rec","Рецепты"]].map(([k,l]) =>
+          ${[["today","Сегодня"],["menu","Меню"],["shop","Закупки"],["rec","Рецепты"],["cafe","Кафе"]].map(([k,l]) =>
             html`<button class=${tab===k?"on":""} onClick=${() => setTab(k)}>${l}</button>`)}
         </nav>
         ${busy && html`<div class="busy"></div>`}
@@ -441,6 +506,7 @@ function App() {
             onRecipe=${setOpenRec} onGenerate=${() => setSheet("gen")}/>`}
         ${tab==="shop" && html`<${Shop} st=${st} plans=${plans} act=${act}/>`}
         ${tab==="rec" && html`<${Recipes} list=${st.plan.recipes} act=${act}/>`}
+        ${tab==="cafe" && html`<${Cafe} st=${st} act=${act}/>`}
       </main>
 
       ${openRec && html`<${Sheet} title=${st.plan.recipes.find(r=>r.id===openRec)?.name} onClose=${()=>setOpenRec(null)}>
@@ -477,11 +543,13 @@ function Today({ plan, day, supps, people, table, recipes, onRecipe, onPick }) {
 
     ${(!c.repeat || cookDays) && c.items.length > 0 && html`
       <div class="cook">
-        <div class="cook-h">Что приготовить${c.days > 1 ? ` — сразу на ${c.days} дня` : " — на сегодня"}
+        <div class="cook-h">Что приготовить${cookDays === 1 ? " — только на сегодня"
+            : c.block > 1 ? ` — сразу на ${c.block} дня` : " — как в плане"}
           <span class="cook-sub">на ${people} чел.</span></div>
-        ${c.block > 1 && html`<div class="cook-switch">
-          <button class=${c.days === 1 ? "on" : ""} onClick=${() => setCookDays(1)}>На сегодня</button>
-          <button class=${c.days > 1 ? "on" : ""} onClick=${() => setCookDays(null)}>На ${c.block} дня</button>
+        ${c.multi && html`<div class="cook-switch">
+          <button class=${cookDays === 1 ? "on" : ""} onClick=${() => setCookDays(1)}>На сегодня</button>
+          <button class=${cookDays !== 1 ? "on" : ""} onClick=${() => setCookDays(null)}>
+            ${c.block > 1 ? `На ${c.block} дня` : "Как в плане"}</button>
         </div>`}
         ${c.items.map(it => html`
           <div class=${"cook-row" + (it.rid ? " cook-rec" : "")}
@@ -705,6 +773,51 @@ function Recipes({ list, act }) {
       : html`<div><${RecipeBody} r=${r}/>
         <button class="btn btn-ghost" onClick=${() => { setEdit(r.id); setText(r.text||""); }}>Изменить</button></div>`}
   </article>`)}</section>`;
+}
+
+/* ---------- кафе ---------- */
+function Cafe({ st, act }) {
+  const [name, setName] = useState("");
+  const [place, setPlace] = useState("");
+  const [slot, setSlot] = useState("Обед");
+  const [adding, setAdding] = useState(false);
+
+  const fromPlan = (st.plan.cafe || []).map(c => ({...c, fixed:true}));
+  const all = [...fromPlan, ...st.user.cafe.map(c => ({...c, fixed:false}))];
+  const groups = SLOTS.filter(s => all.some(c => c.slot === s))
+                      .map(s => ({slot:s, items: all.filter(c => c.slot === s)}));
+
+  return html`<section class="fade">
+    <p class="note">Что можно съесть вне дома и в каком месте. Список твой — добавляй, что подошло.</p>
+
+    ${groups.length === 0 && html`<div class="empty"><p>Пока пусто.</p></div>`}
+    ${groups.map(g => html`<div class="grp">
+      <h3 class="grp-h">${g.slot}</h3>
+      <div class="grp-body">${g.items.map(c => html`
+        <div class="cafe-row">
+          <div class="cafe-main">
+            <div class="cafe-n">${c.name}</div>
+            ${c.place && html`<div class="cafe-p">📍 ${c.place}</div>`}
+          </div>
+          ${c.fixed
+            ? html`<span class="tag">из плана</span>`
+            : html`<button class="del" onClick=${() => act({action:"cafe_del", cid:c.cid})}>×</button>`}
+        </div>`)}</div>
+    </div>`)}
+
+    ${adding ? html`<div class="add">
+        <input value=${name} onInput=${e => setName(e.target.value)} placeholder="Блюдо, например: борщ"/>
+        <input value=${place} onInput=${e => setPlace(e.target.value)} placeholder="Где: Каре"/>
+        <div class="slots">${SLOTS.map(sl => html`<button class=${"slot-b"+(slot===sl?" on":"")}
+          onClick=${() => setSlot(sl)}>${sl}</button>`)}</div>
+        <div class="add-btns">
+          <button class="btn" onClick=${() => {
+            if (name.trim()) { act({action:"cafe_add", name, place, slot}); setName(""); setPlace(""); setAdding(false); }
+          }}>Добавить</button>
+          <button class="btn btn-ghost" onClick=${() => setAdding(false)}>Отмена</button>
+        </div></div>`
+      : html`<button class="btn btn-wide" onClick=${() => setAdding(true)}>Добавить блюдо</button>`}
+  </section>`;
 }
 
 /* ---------- шторки ---------- */
