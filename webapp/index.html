@@ -256,28 +256,49 @@ async function api(path, payload) {
 }
 
 /* ---------- сколько варить ---------- */
-function parseGrams(dish) {              // «Отварная гречка — 180 г» -> 180
-  const m = dish.match(/—\s*(\d+)(?:\s*[–-]\s*\d+)?\s*г(?![а-я])/);
-  return m ? parseInt(m[1], 10) : 0;
+function parseAmount(dish) {          // «Отварная гречка — 180 г» -> {n:180, unit:"г"}
+  const m = dish.match(/—\s*(\d+)(?:\s*[–-]\s*\d+)?\s*(г|мл|шт)(?![а-я])/);
+  return m ? { n: parseInt(m[1], 10), unit: m[2] } : null;
 }
+
 function cookPlan(plan, day, people, table) {
   const i = plan.days.findIndex(d => d.name === day.name);
   const repeat = sameMeals(day, plan.days[i-1]);
-  let days = 1;                          // на сколько дней готовим за раз
+  let days = 1;                       // на сколько дней готовим за раз
   while (plan.days[i+days] && sameMeals(day, plan.days[i+days])) days++;
+
   const agg = new Map();
   day.meals.forEach(m => m.d.forEach(dish => {
-    (table[dish] || []).forEach(([cat, name, badge, unit, qty]) => {
-      if (cat !== "Крупы и лапша" || unit !== "г" || !qty) return;   // варим только крупы
-      if (!agg.has(name)) agg.set(name, {name, dry:0, cooked:0, dishes:new Set()});
-      const a = agg.get(name);
-      a.dry += qty * people * days;
-      a.cooked += parseGrams(dish) * people * days;
-      a.dishes.add(splitDish(dish)[0]);
+    if (/^(Вода|Кофе|Зелёный чай|Ромашковый чай)/.test(dish)) return;   // заваривается по чашке
+    const ing = table[dish] || [];
+    const amount = parseAmount(dish);
+    let dry = 0, raw = 0, pieces = 0;
+    ing.forEach(([cat, name, badge, unit, qty, note]) => {
+      if (qty === null || qty === undefined) return;
+      if (unit === "шт") { pieces += qty; return; }                   // считаем штуками
+      if (unit !== "г") return;
+      if (cat === "Крупы и лапша") dry += qty;                        // варим из сухого
+      else if ((note || "").includes("сырой вес")) raw += qty;        // усохнет при готовке
     });
+    if (!amount && !dry && !raw && !ing.some(x => x[4])) return;      // готовить нечего
+    const name = splitDish(dish)[0];
+    if (!agg.has(name)) agg.set(name, {name, rid: recipeIdFor(dish), amount, dry:0, raw:0, pieces:0, n:0, slots:new Set()});
+    const a = agg.get(name);
+    a.n += 1; a.dry += dry; a.raw += raw; a.pieces += pieces; a.slots.add(m.t);
   }));
-  const recipes = [...new Set(day.meals.flatMap(m => m.d.map(recipeIdFor)).filter(Boolean))];
-  return { days, repeat, items: [...agg.values()], recipes };
+
+  const items = [...agg.values()].map(a => {
+    const k = people * days * a.n;                    // порций всего
+    // штучное показываем штуками: «4 шт» понятнее, чем «1000 г»
+    const byPiece = a.pieces > 0 && a.amount?.unit !== "шт";
+    return { ...a,
+             total: byPiece ? Math.ceil(a.pieces * people * days) : (a.amount ? a.amount.n * k : 0),
+             unit: byPiece ? "шт" : (a.amount?.unit || ""),
+             base: a.amount?.n || 0, portions: k,
+             dryTotal: Math.round(a.dry * people * days / 5) * 5,
+             rawTotal: Math.round(a.raw * people * days / 10) * 10 };
+  });
+  return { days, repeat, items };
 }
 
 /* ---------- случайное меню ---------- */
@@ -425,25 +446,23 @@ function Today({ plan, day, supps, people, table, recipes, onRecipe, onPick }) {
       <span class="stamp-note">${plan.label}</span>
     </div>
 
-    ${!c.repeat && (c.items.length > 0 || c.recipes.length > 0) && html`
+    ${!c.repeat && c.items.length > 0 && html`
       <div class="cook">
         <div class="cook-h">Что приготовить${c.days > 1 ? ` — сразу на ${c.days} дня` : ""}
           <span class="cook-sub">на ${people} чел.</span></div>
-        ${c.items.map(it => html`<div class="cook-row">
-          <div class="cook-n">${it.name}
-            <span class="cook-d">${[...it.dishes].join(", ")}</span></div>
-          <div class="cook-q">
-            <b class="mono">${Math.round(it.dry/10)*10} г</b><span class="cook-u">сухой</span>
-            ${it.cooked > 0 && html`<span class="cook-out mono">≈ ${Math.round(it.cooked/10)*10} г готовой</span>`}
-          </div>
-        </div>`)}
-        ${c.recipes.map(id => {
-          const r = recipes.find(x => x.id === id);
-          return html`<button class="cook-row cook-rec" onClick=${() => onRecipe(id)}>
-            <div class="cook-n">${r ? r.name : "Рецепт"}<span class="cook-d">готовим по рецепту</span></div>
-            <div class="cook-q"><span class="cook-link">открыть →</span></div>
-          </button>`;
-        })}
+        ${c.items.map(it => html`
+          <div class=${"cook-row" + (it.rid ? " cook-rec" : "")}
+               onClick=${it.rid ? () => onRecipe(it.rid) : null}>
+            <div class="cook-n">${it.name}
+              <span class="cook-d">${[...it.slots].join(", ").toLowerCase()}
+                ${it.portions > 1 ? ` · ${it.base ? it.base + " " + it.unit + " × " : ""}${it.portions}` : ""}</span></div>
+            <div class="cook-q">
+              ${it.total > 0 && html`<b class="mono">${it.total} ${it.unit}</b>`}
+              ${it.dryTotal > 0 && html`<span class="cook-out mono">сварить ${it.dryTotal} г сухой</span>`}
+              ${it.rawTotal > 0 && html`<span class="cook-out mono">взять ${it.rawTotal} г сырого</span>`}
+              ${it.rid && html`<span class="cook-link">рецепт →</span>`}
+            </div>
+          </div>`)}
       </div>`}
 
     <${DayCard} day=${day} supps=${supps} onRecipe=${onRecipe} big=${true}/>
