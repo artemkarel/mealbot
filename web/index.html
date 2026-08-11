@@ -1,0 +1,679 @@
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>План питания</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+:root{
+  --bg:#ECEEEA; --card:#fff; --ink:#16191A; --ink2:#6E7671; --ink3:#9AA19C;
+  --line:#E1E5DF; --accent:#1F6B4A; --accent-bg:#E7F0EA;
+  --amber:#A9700B; --amber-bg:#FBF1DE; --red:#A93B2C; --red-bg:#FAEAE7;
+  --blue:#2C6187; --blue-bg:#E6EEF5; --r:14px;
+}
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
+  color:var(--ink);display:flex;justify-content:center;padding:20px 12px;min-height:100vh}
+.phone{width:100%;max-width:400px;background:var(--bg);border-radius:26px;overflow:hidden;
+  box-shadow:0 8px 40px rgba(0,0,0,.16);display:flex;flex-direction:column;min-height:800px}
+.num{font-variant-numeric:tabular-nums}
+
+.hdr{background:var(--card);padding:12px 14px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
+.hdr-top{display:flex;align-items:center;gap:10px}
+.back{border:0;background:none;padding:4px 6px 4px 0;font-size:22px;line-height:1;color:var(--accent);
+  cursor:pointer;display:none;font-family:inherit}
+.back.on{display:block}
+.hdr h1{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em;flex:1}
+.hdr .sub{color:var(--ink2);font-size:13px;margin-top:2px}
+.days{display:flex;gap:6px;margin-top:12px;overflow-x:auto;scrollbar-width:none}
+.days::-webkit-scrollbar{display:none}
+.day{flex:0 0 auto;width:42px;text-align:center;padding:6px 0;border-radius:10px;border:1px solid var(--line);
+  background:#fff;cursor:pointer;font-size:11px;color:var(--ink2)}
+.day b{display:block;font-size:15px;color:var(--ink);font-weight:600}
+.day.on{background:var(--accent);border-color:var(--accent);color:#CFE3D6}
+.day.on b{color:#fff}
+
+.scr{display:none;padding:12px 12px 24px;flex:1}
+.scr.on{display:block}
+.sect{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin:18px 4px 8px}
+.sect:first-child{margin-top:4px}
+.card{background:var(--card);border-radius:var(--r);margin-bottom:10px;overflow:hidden}
+
+.meal-h{display:flex;align-items:center;gap:9px;padding:12px 14px 8px}
+.meal-h .t{font-weight:600;font-size:15px;flex:1}
+.meal-h .time{font-size:12px;color:var(--ink3)}
+.tag{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:3px 6px;border-radius:5px;
+  background:var(--accent-bg);color:var(--accent)}
+.tag.opt{background:#F1F1EE;color:var(--ink2)}
+.rows{padding:0 14px}
+.row{display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid #F3F5F2;font-size:14px}
+.row:last-child{border-bottom:0}
+.row .n{flex:1}
+.row .q{color:var(--ink2);font-size:13px;white-space:nowrap}
+.acts{display:flex;gap:6px;padding:10px 14px 12px;flex-wrap:wrap}
+.btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 11px;font-size:13px;color:var(--ink);
+  cursor:pointer;font-family:inherit;display:inline-flex;align-items:center;gap:5px}
+.btn:active{background:#F5F7F4}
+.btn.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
+.btn.gh{border-style:dashed;color:var(--ink2)}
+.card.eaten{opacity:.55}
+.card.eaten .btn.pri{background:#E7F0EA;color:var(--accent);border-color:#CADCD0}
+
+.rec{display:none;padding:2px 14px 14px;border-top:1px solid #F3F5F2;margin-top:2px}
+.rec.on{display:block}
+.rec h4{margin:12px 0 6px;font-size:12px;letter-spacing:.05em;text-transform:uppercase;color:var(--ink3);font-weight:600}
+
+.note{display:flex;gap:9px;padding:11px 13px;border-radius:11px;font-size:13.5px;line-height:1.45;margin-bottom:10px}
+.note .ic{flex:0 0 auto;font-size:15px;line-height:1.3}
+.note.amber{background:var(--amber-bg);color:#5C3F06}
+.note.blue{background:var(--blue-bg);color:#1D4058}
+.note.red{background:var(--red-bg);color:#6E2418}
+.note.green{background:var(--accent-bg);color:#144A33}
+.note b{font-weight:600}
+.note-acts{display:flex;gap:6px;margin-top:8px;flex-wrap:wrap}
+.note-acts .btn{padding:5px 10px;font-size:12.5px;background:rgba(255,255,255,.8)}
+
+.chk{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F5F2;cursor:pointer;font-size:14px}
+.chk:last-child{border-bottom:0}
+.box{flex:0 0 auto;width:19px;height:19px;border:1.5px solid #C3CAC4;border-radius:6px;margin-top:1px;
+  display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
+.chk.on .box{background:var(--accent);border-color:var(--accent)}
+.chk.on .lbl{text-decoration:line-through;color:var(--ink3)}
+.chk .lbl{flex:1}
+.chk .meta{font-size:12px;color:var(--ink3);margin-top:2px;text-decoration:none;display:block}
+.chk .amt{color:var(--ink2);font-size:13px;white-space:nowrap}
+
+.clock{display:inline-flex;gap:2px;vertical-align:middle;margin-left:6px}
+.clock i{width:11px;height:4px;border-radius:2px;background:#DDE2DC;display:block}
+.clock i.f{background:var(--accent)}
+.clock.warn i.f{background:var(--amber)}
+.clock.crit i.f{background:var(--red)}
+
+.seg{display:flex;background:#E2E6E0;border-radius:10px;padding:3px;margin-bottom:12px}
+.seg button{flex:1;border:0;background:transparent;padding:7px 4px;border-radius:8px;font-size:13px;
+  color:var(--ink2);cursor:pointer;font-family:inherit}
+.seg button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.07)}
+.grp{padding:9px 14px 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+
+/* persons stepper */
+.pers{display:flex;align-items:center;gap:10px;background:#fff;border-radius:var(--r);padding:10px 12px;margin-bottom:10px}
+.pers .lb{flex:1;font-size:14px}
+.pers .lb small{display:block;color:var(--ink3);font-size:12px;margin-top:1px}
+.step{display:flex;align-items:center;gap:2px;background:#F1F3F0;border-radius:9px;padding:2px}
+.step button{width:30px;height:28px;border:0;background:#fff;border-radius:7px;font-size:17px;line-height:1;
+  color:var(--accent);cursor:pointer;font-family:inherit;box-shadow:0 1px 2px rgba(0,0,0,.06)}
+.step button:disabled{color:#C3CAC4;box-shadow:none;background:transparent}
+.step .v{min-width:30px;text-align:center;font-weight:600;font-size:15px}
+
+/* cook list */
+.cook{padding:12px 14px;border-bottom:1px solid #F3F5F2}
+.cook:last-child{border-bottom:0}
+.cook-t{display:flex;align-items:baseline;gap:8px}
+.cook-t .n{flex:1;font-weight:600;font-size:14.5px}
+.cook-t .w{font-size:12px;color:var(--ink3);white-space:nowrap}
+.conv{display:flex;align-items:center;gap:8px;margin-top:7px;font-size:13.5px}
+.conv .raw{background:#F1F3F0;border-radius:7px;padding:4px 8px;color:#3A403D}
+.conv .arr{color:var(--ink3);font-size:13px}
+.conv .rdy{background:var(--accent-bg);border-radius:7px;padding:4px 8px;color:var(--accent);font-weight:600}
+.cook .for{font-size:12px;color:var(--ink3);margin-top:6px}
+
+.wk{display:flex;gap:10px;padding:12px 14px;border-bottom:1px solid #F3F5F2;align-items:flex-start}
+.wk:last-child{border-bottom:0}
+.wk .d{flex:0 0 46px;font-size:12px;color:var(--ink2);padding-top:1px}
+.wk .d b{display:block;font-size:14px;color:var(--ink)}
+.wk .m{flex:1;font-size:13.5px;color:#3A403D;line-height:1.5}
+.dup{font-size:11px;color:var(--accent);background:var(--accent-bg);border-radius:5px;padding:2px 6px;
+  display:inline-block;margin-top:4px;font-weight:600}
+
+.imp{border:1.5px dashed #C3CAC4;border-radius:var(--r);padding:18px 14px;text-align:center;background:#fff;margin-bottom:10px}
+.imp .big{font-size:15px;font-weight:600;margin-bottom:4px}
+.imp .s{font-size:13px;color:var(--ink2);line-height:1.45}
+.stat{display:flex;gap:8px;margin:10px 0}
+.stat div{flex:1;background:#fff;border-radius:11px;padding:10px 8px;text-align:center}
+.stat b{display:block;font-size:19px;font-weight:600;letter-spacing:-.02em}
+.stat span{font-size:11px;color:var(--ink2);line-height:1.25;display:block;margin-top:2px}
+
+.prog{display:flex;align-items:center;gap:10px;background:#fff;border-radius:var(--r);padding:12px 14px;margin-bottom:10px}
+.bar{flex:1;height:6px;background:#E8EBE7;border-radius:3px;overflow:hidden}
+.bar i{display:block;height:100%;background:var(--accent);border-radius:3px;transition:width .25s}
+.prog .lb{font-size:13px;color:var(--ink2);white-space:nowrap}
+
+.mode-step{padding:14px;border-bottom:1px solid #F3F5F2;display:flex;gap:12px}
+.mode-step:last-child{border-bottom:0}
+.mode-step .k{flex:0 0 24px;height:24px;border-radius:50%;background:var(--accent-bg);color:var(--accent);
+  display:flex;align-items:center;justify-content:center;font-size:12.5px;font-weight:600}
+.mode-step .b{flex:1;font-size:14px;line-height:1.5}
+.timer{display:inline-block;margin-top:8px;font-size:12.5px;color:var(--accent);border:1px solid #CADCD0;
+  background:var(--accent-bg);border-radius:20px;padding:3px 10px;cursor:pointer}
+
+.tabs{display:flex;background:var(--card);border-top:1px solid var(--line);padding:6px 0 8px;position:sticky;bottom:0}
+.tabs button{flex:1;border:0;background:none;padding:4px 0;cursor:pointer;font-family:inherit;
+  font-size:10.5px;color:var(--ink3);display:flex;flex-direction:column;align-items:center;gap:3px}
+.tabs button .i{font-size:19px;line-height:1}
+.tabs button.on{color:var(--accent);font-weight:600}
+.toast{position:fixed;left:50%;transform:translateX(-50%);bottom:32px;background:#1D2321;color:#fff;
+  padding:10px 16px;border-radius:11px;font-size:13.5px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
+.toast.on{opacity:.95}
+.link{color:var(--accent);text-decoration:none;border-bottom:1px solid #BFD5C6;cursor:pointer}
+.empty{text-align:center;color:var(--ink2);font-size:13.5px;padding:28px 14px;line-height:1.5}
+</style>
+
+<div class="phone">
+  <div class="hdr">
+    <div class="hdr-top">
+      <button class="back" id="backBtn" onclick="back()">←</button>
+      <div style="flex:1">
+        <h1 id="hTitle">Загрузка…</h1>
+        <div class="sub" id="hSub"></div>
+      </div>
+    </div>
+    <div class="days" id="dayStrip"></div>
+  </div>
+
+  <!-- ===== СЕГОДНЯ ===== -->
+  <div class="scr" id="s-today">
+    <div class="prog">
+      <div class="bar"><i id="bar" style="width:0%"></i></div>
+      <div class="lb"><span id="progTxt" class="num">…</span></div>
+    </div>
+    <div id="prepNotes"></div>
+    <div class="sect">Приёмы пищи</div>
+    <div id="meals"><div class="empty">Загрузка…</div></div>
+    <div class="sect">Готовка</div>
+    <div id="cookHint"></div>
+  </div>
+
+  <!-- ===== ЧТО ГОТОВИТЬ (подэкран) ===== -->
+  <div class="scr" id="s-cook">
+    <div class="seg" id="cookSeg">
+      <button class="on" onclick="setCook(1,this)">Только сегодня</button>
+      <button onclick="setCook(2,this)">Сразу на 2 дня</button>
+    </div>
+    <div id="cookHead"></div>
+    <div id="persCook"></div>
+    <div class="card" id="cookList"></div>
+    <div id="cookFoot"></div>
+  </div>
+
+  <!-- ===== РЕЖИМ ГОТОВКИ: РЕЦЕПТ (подэкран) ===== -->
+  <div class="scr" id="s-mode">
+    <div id="modeBody"></div>
+  </div>
+
+  <!-- ===== НЕДЕЛЯ ===== -->
+  <div class="scr" id="s-week">
+    <div class="imp">
+      <div class="big">Новый план от диетолога</div>
+      <div class="s">Перешли файл боту в чат — он разберёт его сам<br>и план появится здесь.</div>
+    </div>
+    <div class="sect" id="weekSect">Неделя</div>
+    <div class="card" id="weekList"><div class="empty">Загрузка…</div></div>
+    <div id="weekFoot"></div>
+  </div>
+
+  <!-- ===== ЗАКУПКИ ===== -->
+  <div class="scr" id="s-shop">
+    <div class="seg" id="shopSeg">
+      <button class="on" onclick="setShop(0,this)">Закупка 1</button>
+      <button onclick="setShop(1,this)">Закупка 2</button>
+      <button onclick="setShop(2,this)">Холодильник</button>
+    </div>
+    <div id="shopHead"></div>
+    <div id="persShop"></div>
+    <div class="card" id="shopList"><div class="empty">Загрузка…</div></div>
+    <div id="shopFoot"></div>
+  </div>
+
+  <!-- ===== РАЗБОР ПАКЕТОВ (подэкран) ===== -->
+  <div class="scr" id="s-unpack">
+    <div class="note green"><span class="ic">📦</span>
+      <div>Отметь, что купил. Я запишу каждому продукту срок годности от сегодняшнего дня
+        и буду следить, чтобы ничего не пропало.</div></div>
+    <div class="card" id="unpackList"></div>
+    <div style="text-align:center;padding:2px 0">
+      <button class="btn pri" onclick="saveUnpack()">Всё разобрал — записать сроки</button></div>
+  </div>
+
+  <!-- ===== ПРОФИЛЬ ===== -->
+  <div class="scr" id="s-me">
+    <div class="sect">Порции</div>
+    <div id="persMe"></div>
+    <div class="note blue"><span class="ic">👥</span>
+      <div>План рассчитан на одного. При увеличении все веса, закупки и готовка умножаются.</div></div>
+    <div class="sect">Напоминания</div>
+    <div class="note green"><span class="ic">🔔</span>
+      <div>Напоминания приходят от бота в чат: вечером — что подготовить на завтра,
+        утром — что взять с собой.</div></div>
+  </div>
+
+  <div class="tabs" id="tabbar">
+    <button class="on" onclick="go('today',this)"><span class="i">🍽</span>Сегодня</button>
+    <button onclick="go('week',this)"><span class="i">🗓</span>Неделя</button>
+    <button onclick="go('shop',this)"><span class="i">🧺</span>Закупки</button>
+    <button onclick="go('me',this)"><span class="i">👤</span>Профиль</button>
+  </div>
+</div>
+<div class="toast" id="toast"></div>
+
+<script>
+/* ---------- API ---------- */
+const tg = window.Telegram && window.Telegram.WebApp;
+if (tg) { tg.ready(); tg.expand(); }
+async function api(path, opts = {}) {
+  const r = await fetch(path, {...opts,
+    headers: {'X-Init-Data': (tg && tg.initData) || '', ...(opts.headers || {})}});
+  if (!r.ok) {
+    const e = await r.json().catch(() => ({}));
+    throw new Error(e.detail || ('Ошибка ' + r.status));
+  }
+  return r.json();
+}
+
+/* ---------- состояние ---------- */
+const DS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
+let P = 1;                                   // человек (с сервера)
+let day = (new Date().getDay() + 6) % 7;     // выбранный день, по умолчанию сегодняшний
+let planTitle = '';
+let dayCache = {};                           // day -> ответ /api/today
+let shopData = null;                         // ответ /api/shopping
+let cookCache = {};                          // "day:days" -> ответ /api/cook
+let curRecipe = null;                        // рецепт для экрана готовки
+let nav = {tab: 'today', stack: []};
+let st = {shop: 0, cookDays: 1,
+          checked: new Set(JSON.parse(localStorage.getItem('shopChecked') || '[]'))};
+
+/* ---------- утилиты ---------- */
+const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+const round5 = v => v >= 100 ? Math.round(v/5)*5 : Math.round(v*10)/10;
+function amt(lo, hi, u) {
+  if (lo == null && hi == null) return u || '';
+  const a = round5((lo ?? hi) * P), b = hi != null && hi !== lo ? round5(hi * P) : null;
+  return (b ? `${a}–${b}` : `${a}`) + ' ' + (u || '');
+}
+function clock(d) {
+  const f = d <= 1 ? 1 : d <= 3 ? 2 : 3, c = d <= 1 ? "crit" : d <= 3 ? "warn" : "";
+  return `<span class="clock ${c}">${[0,1,2].map(i => `<i class="${i < f ? 'f' : ''}"></i>`).join('')}</span>`;
+}
+function persBar(sub) {
+  return `<div class="pers"><div class="lb">На скольких человек<small>${sub}</small></div>
+    <div class="step">
+      <button onclick="setP(-1)" ${P <= 1 ? 'disabled' : ''}>−</button>
+      <span class="v num">${P}</span>
+      <button onclick="setP(1)" ${P >= 8 ? 'disabled' : ''}>+</button>
+    </div></div>`;
+}
+async function setP(d) {
+  const n = Math.min(8, Math.max(1, P + d));
+  if (n === P) return;
+  try { await api('/api/persons?n=' + n, {method: 'POST'}); } catch (e) { return toast(e.message); }
+  P = n;
+  shopData = null; cookCache = {};          // сервер умножает сам — сбрасываем кэш
+  paint();
+  toast(P === 1 ? 'Порции как в плане' : `Все веса умножены на ${P}`);
+}
+
+/* ---------- навигация ---------- */
+function titles() {
+  const dn = (dayCache[day] && dayCache[day].day_name) || DS[day];
+  return {
+    today: [dn, planTitle],
+    week:  ['План на неделю', planTitle],
+    shop:  ['Закупки', 'Две части, чтобы ничего не испортилось'],
+    me:    ['Профиль', 'Порции и напоминания']
+  };
+}
+const RENDER = {today: renderToday, cook: renderCook, mode: renderMode,
+                week: renderWeek, shop: renderShop, me: renderMe, unpack: renderUnpack};
+function go(tab, btn) {
+  nav = {tab, stack: []};
+  [...document.querySelectorAll('.tabs button')].forEach(b => b.classList.remove('on'));
+  if (btn) btn.classList.add('on');
+  paint();
+}
+function push(id, title, sub) { nav.stack.push({id, title, sub}); paint(); }
+function back() { nav.stack.pop(); paint(); }
+function paint() {
+  const cur = nav.stack.length ? nav.stack[nav.stack.length - 1] : null;
+  const id = cur ? cur.id : nav.tab;
+  [...document.querySelectorAll('.scr')].forEach(s => s.classList.remove('on'));
+  document.getElementById('s-' + id).classList.add('on');
+  document.getElementById('backBtn').classList.toggle('on', !!cur);
+  const T = titles();
+  document.getElementById('hTitle').textContent = cur ? cur.title : T[nav.tab][0];
+  document.getElementById('hSub').textContent = cur ? cur.sub : T[nav.tab][1];
+  document.getElementById('dayStrip').style.display = (!cur && nav.tab === 'today') ? 'flex' : 'none';
+  window.scrollTo(0, 0);
+  (RENDER[id] || (() => {}))();
+}
+
+/* ---------- данные ---------- */
+async function loadDay(d) {
+  if (!dayCache[d]) {
+    dayCache[d] = await api('/api/today?day=' + d);
+    P = dayCache[d].persons;
+    planTitle = dayCache[d].plan.replace(/\.(docx|txt)$/i, '');
+  }
+  return dayCache[d];
+}
+
+/* ---------- день ---------- */
+function dayNums() {
+  const m = planTitle.match(/(\d+)\s*[-–—]\s*(\d+)/);
+  return m && +m[1] + 6 === +m[2] ? DS.map((_, i) => +m[1] + i) : null;
+}
+function renderDays() {
+  const nums = dayNums();
+  document.getElementById('dayStrip').innerHTML = DS.map((n, i) =>
+    `<div class="day ${i === day ? 'on' : ''}" onclick="selDay(${i})">${n}${
+      nums ? `<b class="num">${nums[i]}</b>` : `<b class="num">·</b>`}</div>`).join('');
+}
+function selDay(i) { day = i; renderDays(); paint(); }
+
+async function renderToday() {
+  let t;
+  try { t = await loadDay(day); } catch (e) {
+    document.getElementById('meals').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    return;
+  }
+  renderDays();
+  const T = titles();
+  if (!nav.stack.length && nav.tab === 'today') {
+    document.getElementById('hTitle').textContent = T.today[0];
+    document.getElementById('hSub').textContent = T.today[1];
+  }
+
+  document.getElementById('prepNotes').innerHTML = t.prep.map(p =>
+    `<div class="note amber"><span class="ic">🌙</span><div><b>Подготовить заранее</b><br>${esc(p.text)}</div></div>`).join('');
+
+  document.getElementById('meals').innerHTML = t.meals.map((m, i) => {
+    const eaten = t.logs[m.meal] === 'eaten';
+    const rows = m.items.map(it => `<div class="row"><span class="n">${
+      it.url ? `<a class="link" href="${esc(it.url)}" target="_blank">${esc(it.name)}</a>` : esc(it.name)
+    }</span><span class="q num">${amt(it.qty_min, it.qty_max, it.unit)}</span></div>`).join('');
+    let rec = '';
+    if (m.recipe) {
+      rec = `<div class="rec" id="rec${i}"><h4>${esc(m.recipe.title)}</h4>
+        ${m.recipe.ingredients.map(g => `<div class="row"><span class="n">${esc(g.name)}</span>
+          <span class="q num">${g.qty ? esc(g.qty) + ' ' + esc(g.unit || '') : ''}</span></div>`).join('')}</div>`;
+    }
+    return `<div class="card ${eaten ? 'eaten' : ''}">
+      <div class="meal-h"><span class="t">${esc(m.meal)}</span>
+        ${m.optional ? '<span class="tag opt">по желанию</span>' : ''}</div>
+      <div class="rows">${rows}</div>
+      ${m.note ? `<div style="padding:6px 14px 0;font-size:12.5px;color:var(--ink2)">${esc(m.note)}</div>` : ''}
+      ${rec}
+      <div class="acts">
+        <button class="btn pri" onclick="eat('${esc(m.meal)}')">${eaten ? '✓ Съедено' : 'Съедено'}</button>
+        ${m.recipe ? `<button class="btn" onclick="rt(${i})">Состав</button>
+           <button class="btn" onclick="openRecipe(${i})">Готовить</button>` : ''}
+      </div></div>`;
+  }).join('') || '<div class="empty">На этот день в плане ничего нет</div>';
+
+  const total = t.meals.length,
+        n = t.meals.filter(m => t.logs[m.meal] === 'eaten').length;
+  document.getElementById('bar').style.width = (total ? n / total * 100 : 0) + '%';
+  document.getElementById('progTxt').textContent = n + ' из ' + total;
+
+  const dn = t.day_name || DS[day];
+  document.getElementById('cookHint').innerHTML = t.same_as.length
+    ? `<div class="card" style="padding:13px 14px">
+        <div style="font-size:14px;line-height:1.5"><b>${esc(dn)} повторяется: ${t.same_as.map(i => DS[i]).join(', ')}.</b>
+          Можно приготовить один раз сразу на ${t.same_as.length + 1} дня и не подходить к плите.</div>
+        <div class="note-acts" style="margin-top:11px">
+          <button class="btn pri" onclick="push('cook','Что готовить','${esc(dn)}')">Открыть план готовки</button></div></div>`
+    : `<div class="card" style="padding:13px 14px">
+        <div style="font-size:14px;line-height:1.5">Порции и сырой вес — в плане готовки.</div>
+        <div class="note-acts" style="margin-top:11px">
+          <button class="btn pri" onclick="push('cook','Что готовить','${esc(dn)}')">Открыть план готовки</button></div></div>`;
+}
+async function eat(meal) {
+  const t = dayCache[day];
+  const was = t.logs[meal] === 'eaten';
+  try {
+    await api(`/api/log?day=${day}&meal=${encodeURIComponent(meal)}&status=${was ? 'planned' : 'eaten'}`, {method: 'POST'});
+  } catch (e) { return toast(e.message); }
+  t.logs[meal] = was ? 'planned' : 'eaten';
+  renderToday();
+  const n = t.meals.filter(m => t.logs[m.meal] === 'eaten').length;
+  if (n === t.meals.length) toast('День закрыт полностью');
+}
+function rt(i) { document.getElementById('rec' + i).classList.toggle('on'); }
+function openRecipe(i) {
+  const m = dayCache[day].meals[i];
+  curRecipe = m.recipe;
+  push('mode', m.items[0] ? m.items[0].name : m.meal, m.meal);
+}
+
+/* ---------- что готовить ---------- */
+function setCook(d, btn) {
+  st.cookDays = d;
+  [...document.querySelectorAll('#cookSeg button')].forEach(b => b.classList.remove('on'));
+  btn.classList.add('on'); renderCook();
+}
+async function renderCook() {
+  const d = st.cookDays, key = day + ':' + d;
+  document.getElementById('persCook').innerHTML = persBar(d === 2 ? 'Умножается ещё и на 2 дня' : 'На один день');
+  const t = dayCache[day], dn = t && t.day_name || DS[day];
+  document.getElementById('cookHead').innerHTML = d === 2
+    ? (t && t.same_as.length
+       ? `<div class="note green"><span class="ic">♻️</span><div><b>${esc(dn)} и ${t.same_as.map(i=>DS[i]).join(', ')} совпадают</b><br>
+           Готовим один раз двойным объёмом, потом — только разогреть.</div></div>`
+       : `<div class="note amber"><span class="ic">⚠️</span><div>Следующий день отличается — двойной объём только если так удобнее.</div></div>`)
+    : `<div class="note blue"><span class="ic">🍳</span><div>Порции на один день.${
+        t && t.same_as.length ? ' Дни совпадают — переключи на два дня, и завтра готовить не придётся.' : ''}</div></div>`;
+  let c;
+  try {
+    c = cookCache[key] || (cookCache[key] = await api(`/api/cook?day=${day}&days=${d}`));
+  } catch (e) {
+    document.getElementById('cookList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    return;
+  }
+  document.getElementById('cookList').innerHTML = c.list.map(x => {
+    let title, conv;
+    if (x.cooked == null) {                                // ингредиент раскладки — только сырьё
+      title = x.product;
+      conv = `<span class="raw num">${x.raw} ${esc(x.raw_unit || x.unit)}</span>`;
+    } else if (x.cooked === x.raw && (x.raw_unit || x.unit) === x.unit) {  // товар как есть
+      title = x.dish;
+      conv = `<span class="rdy num">${x.cooked} ${esc(x.unit)}</span>`;
+    } else {
+      title = x.dish;
+      conv = `<span class="raw num">${x.raw} ${esc(x.raw_unit || x.unit)} ${esc(x.product.toLowerCase())}</span>
+        <span class="arr">→</span>
+        <span class="rdy num">${x.cooked} ${esc(x.unit)} готового</span>`;
+    }
+    return `<div class="cook">
+      <div class="cook-t"><span class="n">${esc(title)}</span></div>
+      <div class="conv">${conv}</div>
+      <div class="for">${esc(x.meals)}</div>
+    </div>`;
+  }).join('') || '<div class="empty">Для этого дня нет раскладки в справочнике</div>';
+  document.getElementById('cookFoot').innerHTML =
+    `<div class="note amber"><span class="ic">📐</span><div><b>Веса пересчитаны, а не взяты из плана</b><br>
+      В плане — вес готового блюда. Крупы разбухают в 2,2–3 раза, рыба и мясо теряют около 20%.
+      В магазин идёт левая колонка, на тарелку — правая.</div></div>`;
+}
+
+/* ---------- рецепт ---------- */
+function renderMode() {
+  const r = curRecipe;
+  document.getElementById('modeBody').innerHTML = !r
+    ? '<div class="empty">Рецепт не выбран</div>'
+    : `<div class="sect">Ингредиенты</div>
+       <div class="card"><div class="rows" style="padding:8px 14px">
+         ${r.ingredients.map(g => `<div class="row"><span class="n">${esc(g.name)}</span>
+           <span class="q num">${g.qty ? esc(g.qty) + ' ' + esc(g.unit || '') : ''}</span></div>`).join('')}
+       </div></div>
+       ${r.steps.length ? `<div class="sect">Шаги</div>
+       <div class="card">${r.steps.map((s, i) =>
+         `<div class="mode-step"><span class="k num">${i + 1}</span><div class="b">${esc(s)}</div></div>`).join('')}
+       </div>` : ''}
+       <div style="text-align:center;padding:4px 0 2px">
+         <button class="btn pri" onclick="back()">Готово</button></div>`;
+}
+
+/* ---------- неделя ---------- */
+async function renderWeek() {
+  let days;
+  try { days = await Promise.all(DS.map((_, i) => loadDay(i))); } catch (e) {
+    document.getElementById('weekList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    return;
+  }
+  document.getElementById('weekSect').textContent = planTitle.replace(/^План питания\s*/i, '') || 'Неделя';
+  const nums = dayNums();
+  document.getElementById('weekList').innerHTML = days.map((t, i) => {
+    const mains = t.meals.map(m => m.items[0] && m.items[0].name).filter(Boolean);
+    const prev = t.same_as.filter(x => x < i);
+    return `<div class="wk"><div class="d">${DS[i]}${nums ? `<b class="num">${nums[i]}</b>` : ''}</div>
+      <div class="m">${prev.length ? `То же, что ${prev.map(x => 'в ' + DS[x]).join(', ')}` : mains.map(esc).join(' · ')}
+        ${prev.length ? `<br><span class="dup">= ${prev.map(x => (dayCache[x] && dayCache[x].day_name || DS[x]).toLowerCase()) .join(', ')}</span>` : ''}</div></div>`;
+  }).join('');
+  const uniq = new Set(days.map((t, i) => {
+    const prev = t.same_as.filter(x => x < i);
+    return prev.length ? prev[0] : i;
+  })).size;
+  const totalMeals = days.reduce((s, t) => s + t.meals.length, 0);
+  const uniqMeals = days.reduce((s, t, i) => s + (t.same_as.some(x => x < i) ? 0 : t.meals.length), 0);
+  document.getElementById('weekFoot').innerHTML = uniq < 7
+    ? `<div class="note green"><span class="ic">♻️</span><div><b>${uniqMeals} уникальных приёмов из ${totalMeals}</b><br>
+        Часть недели повторяется — готовить можно реже.</div></div>` : '';
+}
+
+/* ---------- закупки ---------- */
+const SHOPHEAD = [
+  ['green', '📅', '<b>Закупка 1 — начало недели</b><br>Скоропорт на первые дни. Всё долгое хранение берём сразу на неделю.'],
+  ['amber', '❄️', '<b>Закупка 2 — середина недели</b><br>Скоропорт на вторую половину. Что помечено «заморозить сразу» — уже куплено в первой закупке.'],
+  ['red', '⏳', '<b>Съесть, пока не испортилось</b><br>Сроки считаются от даты покупки, записанной при разборе пакетов.']
+];
+function setShop(i, btn) {
+  st.shop = i;
+  [...document.querySelectorAll('#shopSeg button')].forEach(b => b.classList.remove('on'));
+  btn.classList.add('on'); renderShop();
+}
+async function renderShop() {
+  const [cls, ic, txt] = SHOPHEAD[st.shop];
+  document.getElementById('shopHead').innerHTML = `<div class="note ${cls}"><span class="ic">${ic}</span><div>${txt}</div></div>`;
+  if (st.shop === 2) { document.getElementById('persShop').innerHTML = ''; return renderFridge(); }
+  document.getElementById('persShop').innerHTML = persBar('Умножает все количества в списке');
+  let s;
+  try { s = shopData || (shopData = await api('/api/shopping')); } catch (e) {
+    document.getElementById('shopList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    return;
+  }
+  const items = st.shop === 0 ? s.part1 : s.part2;
+  const groups = {};
+  for (const it of items) (groups[it.category || 'Прочее'] ||= []).push(it);
+  let total = 0;
+  document.getElementById('shopList').innerHTML = Object.entries(groups).map(([grp, arr]) => {
+    total += arr.length;
+    return `<div class="grp">${esc(grp)}</div>` + arr.map(it => {
+      const key = st.shop + ':' + it.id + ':' + it.tag;
+      const on = st.checked.has(key);
+      const q = it.qty.packs ? `${it.qty.value} ${esc(it.qty.unit)}` : `${it.qty.value} ${esc(it.qty.unit)}`;
+      const meta = [it.tag, it.qty.packs && it.qty.packs > 1 ? it.qty.packs + ' уп.' : null,
+                    [...new Set(it.days)].map(d => DS[d]).join(', ')].filter(Boolean).join(' · ');
+      return `<div class="chk ${on ? 'on' : ''}" onclick="tick('${esc(key)}')">
+        <span class="box">✓</span>
+        <span class="lbl">${it.url ? `<a class="link" href="${esc(it.url)}" target="_blank" onclick="event.stopPropagation()">${esc(it.name)}</a>` : esc(it.name)}${it.shelf < 8 ? clock(it.shelf) : ''}
+          <span class="meta">${esc(meta)}</span></span>
+        <span class="amt num">${q}</span></div>`;
+    }).join('');
+  }).join('') || '<div class="empty">Список пуст</div>';
+  document.getElementById('shopFoot').innerHTML =
+    `<div class="note green"><span class="ic">📦</span><div><b>Пришёл из магазина?</b><br>
+      Разбери пакеты — я запишу каждому продукту срок годности.
+      <div class="note-acts"><button class="btn" onclick="openUnpack()">Разбор пакетов</button></div></div></div>
+     <div style="text-align:center;color:var(--ink3);font-size:12.5px;padding:6px 0 2px">
+      ${total} позиций${P > 1 ? ` · на ${P} чел.` : ''}</div>`;
+}
+function tick(k) {
+  st.checked.has(k) ? st.checked.delete(k) : st.checked.add(k);
+  localStorage.setItem('shopChecked', JSON.stringify([...st.checked]));
+  renderShop();
+}
+
+/* ---------- разбор пакетов ---------- */
+let unpackSel = new Set();
+function openUnpack() {
+  unpackSel = null;                    // null = «отмечено всё» до первого клика
+  push('unpack', 'Разбор пакетов', 'Закупка ' + (st.shop + 1));
+}
+function unpackItems() {
+  const s = shopData;
+  if (!s) return [];
+  return (st.shop === 0 ? s.part1 : s.part2).map(it => {
+    const frozen = it.tag === 'заморозить сразу';
+    const act = frozen ? '❄️ Сразу в морозилку'
+      : it.shelf <= 3 ? `👁 В холодильник, съесть за ${it.shelf} дн.`
+      : it.shelf < 14 ? '🧊 В холодильник' : '🧺 В шкаф';
+    return {...it, frozen, act};
+  });
+}
+function renderUnpack() {
+  const items = unpackItems();
+  if (unpackSel === null) unpackSel = new Set(items.map((_, i) => i));
+  document.getElementById('unpackList').innerHTML = items.map((it, i) =>
+    `<div class="chk ${unpackSel.has(i) ? 'on' : ''}" onclick="unTick(${i})"><span class="box">✓</span>
+      <span class="lbl">${esc(it.name)}<span class="meta">${esc(it.act)}</span></span>
+      <span class="amt num">${it.qty.value} ${esc(it.qty.unit)}</span></div>`).join('')
+    || '<div class="empty">Список закупки пуст</div>';
+}
+function unTick(i) { unpackSel.has(i) ? unpackSel.delete(i) : unpackSel.add(i); renderUnpack(); }
+async function saveUnpack() {
+  const items = unpackItems().filter((_, i) => unpackSel && unpackSel.has(i))
+    .map(it => ({product: it.id, amount: it.qty.value, unit: it.qty.unit, frozen: it.frozen}));
+  if (!items.length) return toast('Ничего не отмечено');
+  try { await api('/api/unpack', {method: 'POST', body: JSON.stringify({items}),
+                                  headers: {'Content-Type': 'application/json'}}); }
+  catch (e) { return toast(e.message); }
+  back(); setShop(2, document.querySelectorAll('#shopSeg button')[2]);
+  toast('Сроки годности записаны');
+}
+
+/* ---------- холодильник ---------- */
+async function renderFridge() {
+  let f;
+  try { f = await api('/api/fridge'); } catch (e) {
+    document.getElementById('shopList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    return;
+  }
+  const fresh = f.items.filter(x => !x.frozen), froz = f.items.filter(x => x.frozen);
+  const row = x => `<div class="chk">
+      <span class="lbl">${esc(x.name)}${!x.frozen && x.days_left < 8 ? clock(Math.max(0, x.days_left)) : ''}
+        <span class="meta">куплено ${esc(x.bought_at)} · ${x.frozen ? 'в морозилке' :
+          x.days_left < 0 ? 'срок вышел' : x.days_left === 0 ? 'съесть сегодня' :
+          x.days_left === 1 ? 'съесть до завтра' : `осталось ${x.days_left} дн.`}</span></span>
+      <span class="amt num">${x.amount ?? ''} ${esc(x.unit || '')}</span>
+      <button class="btn" style="padding:4px 9px;font-size:12px" onclick="useUp(${x.id})">Съедено</button>
+    </div>`;
+  document.getElementById('shopList').innerHTML =
+    (fresh.length ? `<div class="grp">Что портится первым</div>` + fresh.map(row).join('') : '') +
+    (froz.length ? `<div class="grp">Заморожено</div>` + froz.map(row).join('') : '') ||
+    '<div class="empty">Пусто. Отметь покупки через «Разбор пакетов» — и здесь появятся сроки.</div>';
+  const urgent = fresh.filter(x => x.days_left <= 1);
+  document.getElementById('shopFoot').innerHTML = urgent.length
+    ? `<div class="note red"><span class="ic">⚠️</span><div><b>Съесть в первую очередь:</b><br>
+        ${urgent.map(x => esc(x.name)).join(', ')}</div></div>` : '';
+}
+async function useUp(id) {
+  try { await api('/api/use?id=' + id, {method: 'POST'}); } catch (e) { return toast(e.message); }
+  renderFridge();
+}
+
+/* ---------- профиль ---------- */
+function renderMe() {
+  document.getElementById('persMe').innerHTML = persBar('Влияет на приёмы пищи, готовку и закупки');
+}
+
+/* ---------- toast ---------- */
+let tt;
+function toast(m) {
+  const t = document.getElementById('toast');
+  t.textContent = m; t.classList.add('on');
+  clearTimeout(tt); tt = setTimeout(() => t.classList.remove('on'), 1900);
+}
+
+/* ---------- старт ---------- */
+(async function init() {
+  try { await loadDay(day); } catch (e) { toast(e.message); }
+  renderDays(); paint();
+})();
+</script>
