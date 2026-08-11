@@ -48,3 +48,12 @@ CREATE TABLE IF NOT EXISTS user_reminders (
 CREATE TABLE IF NOT EXISTS supplements (
   id INTEGER PRIMARY KEY, user_id INT, name TEXT, dose TEXT,
   meal TEXT, timing TEXT);                                  -- до еды | во время еды | после еды
+
+CREATE TABLE IF NOT EXISTS user_recipes (
+  id INTEGER PRIMARY KEY, user_id INT, dish TEXT, title TEXT,
+  ingredients_json TEXT, steps_json TEXT,
+  created_at TEXT DEFAULT (datetime('now')));
+
+CREATE TABLE IF NOT EXISTS user_places (            -- «где купить» поверх products.url
+  user_id INT, product TEXT, place TEXT,
+  PRIMARY KEY (user_id, product));

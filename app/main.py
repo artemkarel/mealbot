@@ -39,13 +39,16 @@ def today(day: int = 0, x_init_data: str = Header(None)):
                            "ingredients": json.loads(r["ingredients_json"] or "[]"),
                            "steps": json.loads(r["steps_json"] or "[]")}
                for r in con.execute("SELECT * FROM recipes WHERE plan_id=?", (plan["id"],))}
+    # свои рецепты пользователя перекрывают рецепты из файла плана
+    for r in con.execute("SELECT * FROM user_recipes WHERE user_id=?", (uid,)):
+        recipes[r["dish"]] = _user_recipe(r)
     meals: dict = {}
     for r in items:
         m = meals.setdefault(r["meal"], {"meal": r["meal"], "optional": r["optional"],
-                                         "note": r["note"], "recipe": None, "items": []})
+                                         "note": r["note"], "items": []})
         m["items"].append({"name": r["name"], "qty_min": r["qty_min"],
-                           "qty_max": r["qty_max"], "unit": r["unit"], "url": r["url"]})
-        if r["name"] in recipes: m["recipe"] = recipes[r["name"]]
+                           "qty_max": r["qty_max"], "unit": r["unit"], "url": r["url"],
+                           "recipe": recipes.get(r["name"])})
     logs = {r["meal"]: r["status"] for r in con.execute(
         "SELECT meal, status FROM meal_logs WHERE plan_id=? AND day_index=? AND user_id=?",
         (plan["id"], day, uid))}
@@ -68,7 +71,30 @@ def cook(day: int = 0, days: int = 1, x_init_data: str = Header(None)):
 def shopping(x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
     con = connect(); plan = active_plan(con, uid)
-    return build_shopping(plan["id"], persons=persons_of(con, uid))
+    res = build_shopping(plan["id"], persons=persons_of(con, uid))
+    # место покупки: правка пользователя поверх ссылки из файла диетолога
+    places = {r["product"]: r["place"] for r in con.execute(
+        "SELECT product, place FROM user_places WHERE user_id=?", (uid,))}
+    for part in (res["part1"], res["part2"]):
+        for it in part:
+            it["place"] = places.get(it["id"]) or it["url"]
+    return res
+
+@app.post("/api/place")
+def set_place(product: str, place: str = "", x_init_data: str = Header(None)):
+    """Задать/поправить место покупки товара. Пустая строка — вернуть значение из справочника."""
+    uid = me(x_init_data)["id"]
+    con = connect()
+    if not con.execute("SELECT 1 FROM products WHERE id=?", (product,)).fetchone():
+        raise HTTPException(404, "нет такого товара")
+    place = place.strip()[:300]
+    if place:
+        con.execute("INSERT INTO user_places(user_id,product,place) VALUES(?,?,?)"
+                    " ON CONFLICT(user_id,product) DO UPDATE SET place=excluded.place",
+                    (uid, product, place))
+    else:
+        con.execute("DELETE FROM user_places WHERE user_id=? AND product=?", (uid, product))
+    con.commit(); return {"ok": True}
 
 @app.post("/api/log")
 def log(day: int, meal: str, status: str, x_init_data: str = Header(None)):
@@ -166,6 +192,51 @@ def reminder_delete(id: int, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
     con = connect()
     con.execute("DELETE FROM user_reminders WHERE id=? AND user_id=?", (id, uid))
+    con.commit(); return {"ok": True}
+
+# ---------- свои рецепты ----------
+
+def _user_recipe(r) -> dict:
+    ings = json.loads(r["ingredients_json"] or "[]")
+    return {"title": r["title"],
+            "ingredients": [{"name": i, "qty": None, "unit": None} if isinstance(i, str) else i
+                            for i in ings],
+            "steps": json.loads(r["steps_json"] or "[]")}
+
+@app.get("/api/recipes")
+def recipes_list(x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect()
+    rows = con.execute("SELECT * FROM user_recipes WHERE user_id=? ORDER BY id DESC",
+                       (uid,)).fetchall()
+    plan = current_plan(con, uid)
+    dishes = [r["name"] for r in con.execute(
+        "SELECT DISTINCT name FROM plan_items WHERE plan_id=? ORDER BY name",
+        (plan["id"],))] if plan else []
+    return {"recipes": [{**_user_recipe(r), "id": r["id"], "dish": r["dish"]} for r in rows],
+            "dishes": dishes}
+
+@app.post("/api/recipes/add")
+def recipe_add(payload: dict, x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    title = (payload.get("title") or "").strip()[:120]
+    dish = (payload.get("dish") or "").strip()[:120]
+    if not title: raise HTTPException(400, "впиши название рецепта")
+    if not dish: raise HTTPException(400, "укажи блюдо, к которому прикрепить")
+    ings = [str(s).strip()[:200] for s in payload.get("ingredients", []) if str(s).strip()]
+    steps = [str(s).strip()[:500] for s in payload.get("steps", []) if str(s).strip()]
+    con = connect()
+    con.execute("INSERT INTO user_recipes(user_id,dish,title,ingredients_json,steps_json)"
+                " VALUES(?,?,?,?,?)",
+                (uid, dish, title, json.dumps(ings, ensure_ascii=False),
+                 json.dumps(steps, ensure_ascii=False)))
+    con.commit(); return {"ok": True}
+
+@app.post("/api/recipes/delete")
+def recipe_delete(id: int, x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect()
+    con.execute("DELETE FROM user_recipes WHERE id=? AND user_id=?", (id, uid))
     con.commit(); return {"ok": True}
 
 # ---------- БАДы ----------
