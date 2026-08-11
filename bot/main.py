@@ -8,8 +8,9 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import (Message, WebAppInfo, InlineKeyboardMarkup,
                            InlineKeyboardButton, BotCommand)
 from import_plan import save
-from app.db import connect
+from app.db import connect, current_plan, persons_of, set_current_plan
 from app.cooking import same_days
+from app.shopping import build as build_shopping
 
 ROOT = Path(__file__).parent.parent
 
@@ -17,8 +18,6 @@ TOKEN = os.environ["BOT_TOKEN"]
 URL = os.environ["WEBAPP_URL"]
 ALLOWED = {int(x) for x in os.getenv("ALLOWED_USER_IDS", "").replace(" ", "").split(",") if x}
 ADMINS = {int(x) for x in os.getenv("ADMIN_USER_IDS", "").replace(" ", "").split(",") if x} or ALLOWED
-MORNING = os.getenv("REMIND_MORNING", "07:30")   # что взять с собой + сроки годности
-EVENING = os.getenv("REMIND_EVENING", "21:00")   # что подготовить на завтра
 
 bot = Bot(TOKEN)
 kb = InlineKeyboardMarkup(inline_keyboard=[[
@@ -54,7 +53,10 @@ async def got_file(m: Message):
             plan_id = save(str(path), m.from_user.id)
         except Exception as e:
             return await m.answer(f"Не смог разобрать: {e}")
-    await m.answer(f"План загружен (#{plan_id}).", reply_markup=kb)
+    con = connect()
+    set_current_plan(con, m.from_user.id, plan_id)
+    con.commit()
+    await m.answer(f"План загружен (#{plan_id}) и выбран текущим.", reply_markup=kb)
 
 
 # ---------- команды ----------
@@ -65,7 +67,7 @@ DAY_FULL = ["Понедельник", "Вторник", "Среда", "Четв�
 def day_menu_text(offset: int, uid: int) -> str:
     """Меню на сегодня (offset=0) или завтра (offset=1) одним сообщением."""
     con = connect()
-    plan = _active_plan(con, uid)
+    plan = current_plan(con, uid)
     if not plan:
         return "План не загружен — пришли файл от диетолога."
     day = (date.today() + timedelta(days=offset)).weekday()
@@ -104,18 +106,21 @@ async def cmd_status(m: Message):
     if not allowed(m): return
     uid = m.from_user.id
     con = connect()
-    plan = _active_plan(con, uid)
+    plan = current_plan(con, uid)
     if plan:
         n = con.execute("SELECT COUNT(*) c FROM plan_items WHERE plan_id=?",
                         (plan["id"],)).fetchone()["c"]
-        head = (f"План: {plan['title']}\nПозиций: {n}, человек: {plan['persons']}, "
+        head = (f"План: {plan['title']}\nПозиций: {n}, человек: {persons_of(con, uid)}, "
                 f"загружен {plan['created_at'][:10]}")
     else:
         head = "План не загружен."
     fridge = con.execute("SELECT COUNT(*) c FROM purchases WHERE used=0 AND user_id=?",
                          (uid,)).fetchone()["c"]
+    rems = con.execute("SELECT COUNT(*) c FROM user_reminders WHERE user_id=? AND enabled=1",
+                       (uid,)).fetchone()["c"]
     await m.answer(f"{head}\nВ холодильнике на учёте: {fridge}\n"
-                   f"Напоминания: утром {MORNING}, вечером {EVENING}", reply_markup=kb)
+                   f"Напоминаний настроено: {rems} (настраиваются в приложении, Профиль)",
+                   reply_markup=kb)
 
 
 async def cmd_version(m: Message):
@@ -164,21 +169,10 @@ BOT_COMMANDS = [
 
 # ---------- напоминания ----------
 
-def _active_plan(con, uid: int):
-    return con.execute("SELECT * FROM plans WHERE active=1 AND user_id=?"
-                       " ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
-
-
-def _users_with_plans(con):
-    return [r["user_id"] for r in con.execute(
-        "SELECT DISTINCT user_id FROM plans WHERE active=1"
-        " AND user_id IS NOT NULL AND user_id > 0")]
-
-
 def build_morning(uid: int) -> str:
     """Утро: что взять с собой (обед и полдник) + что истекает по сроку."""
     con = connect()
-    plan = _active_plan(con, uid)
+    plan = current_plan(con, uid)
     parts = []
     if plan:
         day = date.today().weekday()
@@ -211,7 +205,7 @@ def build_morning(uid: int) -> str:
 def build_evening(uid: int) -> str:
     """Вечер: что подготовить на завтра + подсказка готовить сразу на два дня."""
     con = connect()
-    plan = _active_plan(con, uid)
+    plan = current_plan(con, uid)
     if not plan:
         return ""
     tomorrow = (date.today() + timedelta(days=1)).weekday()
@@ -229,16 +223,50 @@ def build_evening(uid: int) -> str:
     return "\n\n".join(parts)
 
 
-async def send_reminders(build):
-    """Каждому пользователю с активным планом — его собственный текст."""
+def build_meal(uid: int, meal: str) -> str:
+    """Напоминание о конкретном приёме пищи + БАДы к нему."""
     con = connect()
-    for uid in _users_with_plans(con):
-        try:
-            text = build(uid)
-            if text:
-                await bot.send_message(uid, text, reply_markup=kb)
-        except Exception as e:
-            print(f"Не отправилось {uid}: {e}")
+    parts = []
+    plan = current_plan(con, uid)
+    if plan and meal:
+        day = date.today().weekday()
+        rows = con.execute(
+            "SELECT name, COALESCE(qty_max,qty_min) q, unit FROM plan_items"
+            " WHERE plan_id=? AND day_index=? AND meal=? ORDER BY meal_index, id",
+            (plan["id"], day, meal)).fetchall()
+        if rows:
+            lines = [f"  • {r['name']}" + (f' — {r["q"]:g} {r["unit"]}' if r["q"] else "")
+                     for r in rows]
+            parts.append(f"🍽 {meal} по плану:\n" + "\n".join(lines))
+    sups = con.execute("SELECT * FROM supplements WHERE user_id=? AND meal=?"
+                       " ORDER BY timing", (uid, meal or "")).fetchall()
+    if sups:
+        lines = [f"  • {s['name']}" + (f" — {s['dose']}" if s["dose"] else "")
+                 + f" ({s['timing']})" for s in sups]
+        parts.append("💊 Добавки:\n" + "\n".join(lines))
+    return "\n\n".join(parts)
+
+
+def build_shopping_note(uid: int) -> str:
+    con = connect()
+    plan = current_plan(con, uid)
+    if not plan:
+        return ""
+    s = build_shopping(plan["id"], persons=persons_of(con, uid))
+    n1, n2 = len(s["part1"]), len(s["part2"])
+    return (f"🧺 Напоминание о закупке.\nВ списке: {n1} позиций в первой части"
+            f" и {n2} во второй — открой вкладку «Закупки».")
+
+
+async def fire_reminder(r):
+    uid = r["user_id"]
+    builders = {"morning": lambda: build_morning(uid),
+                "evening": lambda: build_evening(uid),
+                "shopping": lambda: build_shopping_note(uid),
+                "meal": lambda: build_meal(uid, r["meal"])}
+    text = builders.get(r["kind"], lambda: "")()
+    if text:
+        await bot.send_message(uid, text, reply_markup=kb)
 
 
 def _minutes(hhmm: str) -> int:
@@ -247,23 +275,29 @@ def _minutes(hhmm: str) -> int:
 
 
 async def reminder_loop():
-    """Раз в минуту сверяет время. Шлёт в 30-минутном окне после цели —
-    чтобы после перезапуска не рассылать вчерашнее."""
+    """Раз в минуту сверяет время с настройками пользователей. Шлёт в 30-минутном
+    окне после цели — чтобы после перезапуска не рассылать вчерашнее."""
     sent = set()
     while True:
         now = datetime.now()
         cur = now.hour * 60 + now.minute
-        for tag, target, build in (("morning", MORNING, build_morning),
-                                   ("evening", EVENING, build_evening)):
-            key = (now.date(), tag)
-            t = _minutes(target)
-            if t <= cur < t + 30 and key not in sent:
-                sent.add(key)
+        try:
+            con = connect()
+            for r in con.execute("SELECT * FROM user_reminders WHERE enabled=1"):
+                key = (now.date(), r["id"])
                 try:
-                    await send_reminders(build)
-                except Exception as e:
-                    print(f"Ошибка напоминания {tag}: {e}")
-        if len(sent) > 100:
+                    t = _minutes(r["time"])
+                except Exception:
+                    continue
+                if t <= cur < t + 30 and key not in sent:
+                    sent.add(key)
+                    try:
+                        await fire_reminder(r)
+                    except Exception as e:
+                        print(f"Ошибка напоминания #{r['id']}: {e}")
+        except Exception as e:
+            print(f"Ошибка цикла напоминаний: {e}")
+        if len(sent) > 500:
             sent = {k for k in sent if k[0] >= now.date()}
         await asyncio.sleep(60)
 

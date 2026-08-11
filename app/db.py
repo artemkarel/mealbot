@@ -12,13 +12,43 @@ def connect():
     return con
 
 def _migrate(con):
-    """Дотягивает старую базу до текущей схемы: колонка user_id появилась позже."""
-    for table in ("plans", "purchases"):
+    """Дотягивает старую базу до текущей схемы: колонки user_id появились позже."""
+    for table in ("plans", "purchases", "meal_logs"):
         cols = [r[1] for r in con.execute(f"PRAGMA table_info({table})")]
         if "user_id" not in cols:
             con.execute(f"ALTER TABLE {table} ADD COLUMN user_id INT")
     con.execute("CREATE INDEX IF NOT EXISTS idx_plans_user ON plans(user_id, active)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_purchases_user ON purchases(user_id, used)")
+
+
+def current_plan(con, uid: int):
+    """Текущий план пользователя: выбранный им; иначе его последний; иначе общий."""
+    r = con.execute("SELECT current_plan_id FROM user_prefs WHERE user_id=?", (uid,)).fetchone()
+    if r and r["current_plan_id"]:
+        p = con.execute("SELECT * FROM plans WHERE id=? AND (user_id IS NULL OR user_id=?)",
+                        (r["current_plan_id"], uid)).fetchone()
+        if p: return p
+    p = con.execute("SELECT * FROM plans WHERE user_id=?"
+                    " ORDER BY active DESC, id DESC LIMIT 1", (uid,)).fetchone()
+    if p: return p
+    return con.execute("SELECT * FROM plans WHERE user_id IS NULL"
+                       " ORDER BY id DESC LIMIT 1").fetchone()
+
+
+def persons_of(con, uid: int) -> int:
+    r = con.execute("SELECT persons FROM user_prefs WHERE user_id=?", (uid,)).fetchone()
+    return r["persons"] if r else 1
+
+
+def set_current_plan(con, uid: int, plan_id: int):
+    con.execute("INSERT INTO user_prefs(user_id, current_plan_id) VALUES(?,?)"
+                " ON CONFLICT(user_id) DO UPDATE SET current_plan_id=excluded.current_plan_id",
+                (uid, plan_id))
+
+
+def set_persons(con, uid: int, n: int):
+    con.execute("INSERT INTO user_prefs(user_id, persons) VALUES(?,?)"
+                " ON CONFLICT(user_id) DO UPDATE SET persons=excluded.persons", (uid, n))
 
 
 def init():

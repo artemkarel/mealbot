@@ -37,3 +37,14 @@ CREATE TABLE IF NOT EXISTS meal_logs (
   status TEXT, comment TEXT, at TEXT DEFAULT (datetime('now')));
 
 CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
+
+CREATE TABLE IF NOT EXISTS user_prefs (
+  user_id INTEGER PRIMARY KEY, current_plan_id INT, persons INT DEFAULT 1);
+
+CREATE TABLE IF NOT EXISTS user_reminders (
+  id INTEGER PRIMARY KEY, user_id INT, kind TEXT,          -- meal | shopping | morning | evening
+  meal TEXT, time TEXT, enabled INT DEFAULT 1);
+
+CREATE TABLE IF NOT EXISTS supplements (
+  id INTEGER PRIMARY KEY, user_id INT, name TEXT, dose TEXT,
+  meal TEXT, timing TEXT);                                  -- до еды | во время еды | после еды

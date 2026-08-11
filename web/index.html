@@ -150,6 +150,11 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
   font-size:10.5px;color:var(--ink3);display:flex;flex-direction:column;align-items:center;gap:3px}
 .tabs button .i{font-size:19px;line-height:1}
 .tabs button.on{color:var(--accent);font-weight:600}
+.frm{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
+.frm select,.frm input{border:1px solid var(--line);border-radius:9px;padding:8px 10px;
+  font:inherit;font-size:14px;background:#fff;color:var(--ink);width:100%;-webkit-appearance:none}
+.frm .row2{display:flex;gap:8px}
+.frm .row2>*{flex:1;min-width:0}
 .toast{position:fixed;left:50%;transform:translateX(-50%);bottom:32px;background:#1D2321;color:#fff;
   padding:10px 16px;border-radius:11px;font-size:13.5px;opacity:0;pointer-events:none;transition:opacity .2s;z-index:50}
 .toast.on{opacity:.95}
@@ -239,12 +244,47 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
     <div id="persMe"></div>
     <div class="note blue"><span class="ic">👥</span>
       <div>План рассчитан на одного. При увеличении все веса, закупки и готовка умножаются.</div></div>
-    <div class="sect">Мои планы</div>
+    <div class="sect">Планы</div>
     <div class="card" id="myPlans"><div class="empty">Загрузка…</div></div>
+
     <div class="sect">Напоминания</div>
-    <div class="note green"><span class="ic">🔔</span>
-      <div>Напоминания приходят от бота в чат: вечером — что подготовить на завтра,
-        утром — что взять с собой.</div></div>
+    <div class="card" id="remList"><div class="empty">Загрузка…</div></div>
+    <div class="card"><div class="frm">
+      <select id="remKind" onchange="document.getElementById('remMeal').style.display=this.value==='meal'?'':'none'">
+        <option value="meal">О приёме пищи</option>
+        <option value="shopping">О закупке</option>
+        <option value="morning">Что взять с собой (утро)</option>
+        <option value="evening">Подготовка на завтра (вечер)</option>
+      </select>
+      <select id="remMeal">
+        <option>Завтрак</option><option>Обед</option><option>Полдник</option>
+        <option>Ужин</option><option>Второй ужин</option>
+      </select>
+      <div class="row2">
+        <input type="time" id="remTime" value="09:00">
+        <button class="btn pri" onclick="addReminder()">Добавить</button>
+      </div>
+    </div></div>
+
+    <div class="sect">БАДы и добавки</div>
+    <div class="card" id="supList"><div class="empty">Загрузка…</div></div>
+    <div class="card"><div class="frm">
+      <input id="supName" placeholder="Название — например, Омега-3">
+      <input id="supDose" placeholder="Дозировка — например, 1000 мг">
+      <div class="row2">
+        <select id="supMeal">
+          <option>Завтрак</option><option>Обед</option><option>Полдник</option>
+          <option>Ужин</option><option>Второй ужин</option>
+        </select>
+        <select id="supTiming">
+          <option>до еды</option><option>во время еды</option><option>после еды</option>
+        </select>
+      </div>
+      <button class="btn pri" onclick="addSup()">Добавить</button>
+    </div></div>
+    <div class="note blue"><span class="ic">💊</span>
+      <div>Добавки показываются в «Сегодня» внутри своего приёма пищи, а напоминания
+        о приёме включают их автоматически.</div></div>
   </div>
 
   <div class="tabs" id="tabbar">
@@ -279,6 +319,7 @@ let dayCache = {};                           // day -> ответ /api/today
 let shopData = null;                         // ответ /api/shopping
 let cookCache = {};                          // "day:days" -> ответ /api/cook
 let curRecipe = null;                        // рецепт для экрана готовки
+let supData = null;                          // БАДы пользователя (null = не загружены)
 let nav = {tab: 'today', stack: []};
 let st = {shop: 0, cookDays: 1,
           checked: new Set(JSON.parse(localStorage.getItem('shopChecked') || '[]'))};
@@ -386,11 +427,19 @@ async function renderToday() {
   document.getElementById('prepNotes').innerHTML = t.prep.map(p =>
     `<div class="note amber"><span class="ic">🌙</span><div><b>Подготовить заранее</b><br>${esc(p.text)}</div></div>`).join('');
 
+  if (supData === null) {
+    try { supData = (await api('/api/supplements')).supplements; } catch (e) { supData = []; }
+  }
   document.getElementById('meals').innerHTML = t.meals.map((m, i) => {
     const eaten = t.logs[m.meal] === 'eaten';
-    const rows = m.items.map(it => `<div class="row"><span class="n">${
+    const supRow = s => `<div class="row"><span class="n" style="color:var(--blue)">💊 ${esc(s.name)}${
+      s.dose ? ' — ' + esc(s.dose) : ''}</span><span class="q">${esc(s.timing)}</span></div>`;
+    const sups = supData.filter(s => s.meal === m.meal);
+    const supsBefore = sups.filter(s => s.timing === 'до еды').map(supRow).join('');
+    const supsAfter = sups.filter(s => s.timing !== 'до еды').map(supRow).join('');
+    const rows = supsBefore + m.items.map(it => `<div class="row"><span class="n">${
       it.url ? `<a class="link" href="${esc(it.url)}" target="_blank">${esc(it.name)}</a>` : esc(it.name)
-    }</span><span class="q num">${amt(it.qty_min, it.qty_max, it.unit)}</span></div>`).join('');
+    }</span><span class="q num">${amt(it.qty_min, it.qty_max, it.unit)}</span></div>`).join('') + supsAfter;
     let rec = '';
     if (m.recipe) {
       rec = `<div class="rec" id="rec${i}"><h4>${esc(m.recipe.title)}</h4>
@@ -667,35 +716,93 @@ function ask(msg, cb) {
   if (tg && tg.showConfirm) tg.showConfirm(msg, ok => ok && cb());
   else if (confirm(msg)) cb();
 }
+const KIND_LABEL = {meal: '', shopping: 'Закупка', morning: 'Что взять с собой',
+                    evening: 'Подготовка на завтра'};
 async function renderMe() {
   document.getElementById('persMe').innerHTML = persBar('Влияет на приёмы пищи, готовку и закупки');
-  let p;
-  try { p = await api('/api/plans'); } catch (e) {
+  document.getElementById('remMeal').style.display =
+    document.getElementById('remKind').value === 'meal' ? '' : 'none';
+  let p, rem, sup;
+  try {
+    [p, rem, sup] = await Promise.all([api('/api/plans'), api('/api/reminders'), api('/api/supplements')]);
+  } catch (e) {
     document.getElementById('myPlans').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
     return;
   }
+  supData = sup.supplements;
+
   const row = x => `<div class="chk" style="cursor:default">
       <span class="lbl">${esc(x.title.replace(/\.(docx|txt)$/i, ''))}
         <span class="meta">${x.days} дн. · ${x.shared ? 'общий план' : 'загружен ' + esc((x.created_at || '').slice(0, 10))}</span></span>
-      ${x.active && !x.shared ? '<span class="tag">активный</span>'
-        : `<button class="btn" style="padding:4px 9px;font-size:12px" onclick="activatePlan(${x.id})">Открыть</button>`}
+      ${x.active ? '<span class="tag">текущий</span>'
+        : `<button class="btn" style="padding:4px 9px;font-size:12px" onclick="activatePlan(${x.id})">Выбрать</button>`}
       ${x.can_delete ? `<button class="btn" style="padding:4px 9px;font-size:12px;color:var(--red)" onclick="delPlan(${x.id})">Удалить</button>` : ''}
     </div>`;
   const mine = p.plans.filter(x => !x.shared), shared = p.plans.filter(x => x.shared);
   document.getElementById('myPlans').innerHTML =
-    (mine.length ? `<div class="grp">Мои</div>` + mine.map(row).join('')
-      : '<div class="empty" style="padding:14px">Своих планов пока нет — пришли боту файл или открой общий.</div>') +
-    (shared.length ? `<div class="grp">Общие — доступны всем</div>` + shared.map(row).join('') : '');
+    (mine.length ? `<div class="grp">Мои</div>` + mine.map(row).join('') : '') +
+    (shared.length ? `<div class="grp">Общие — доступны всем</div>` + shared.map(row).join('') : '') ||
+    '<div class="empty">Планов пока нет — пришли боту файл от диетолога.</div>';
+
+  document.getElementById('remList').innerHTML = rem.reminders.map(r =>
+    `<div class="chk" style="cursor:default">
+      <span class="lbl">${r.kind === 'meal' ? esc(r.meal || '') : esc(KIND_LABEL[r.kind] || r.kind)}
+        <span class="meta">каждый день в ${esc(r.time)}</span></span>
+      <span class="amt num">${esc(r.time)}</span>
+      <button class="btn" style="padding:4px 9px;font-size:12px;color:var(--red)" onclick="delReminder(${r.id})">Удалить</button>
+    </div>`).join('') ||
+    '<div class="empty">Напоминаний нет — добавь ниже, бот напишет в чат в это время.</div>';
+
+  document.getElementById('supList').innerHTML = supData.map(s =>
+    `<div class="chk" style="cursor:default">
+      <span class="lbl">💊 ${esc(s.name)}${s.dose ? ' — ' + esc(s.dose) : ''}
+        <span class="meta">${esc(s.meal)} · ${esc(s.timing)}</span></span>
+      <button class="btn" style="padding:4px 9px;font-size:12px;color:var(--red)" onclick="delSup(${s.id})">Удалить</button>
+    </div>`).join('') ||
+    '<div class="empty">Добавок нет — впиши ниже, они появятся в своём приёме пищи.</div>';
 }
 async function activatePlan(id) {
   try { await api('/api/plans/activate?id=' + id, {method: 'POST'}); } catch (e) { return toast(e.message); }
-  resetCaches(); renderMe(); toast('План открыт');
+  resetCaches(); renderMe(); toast('План выбран текущим');
 }
 function delPlan(id) {
   ask('Удалить план вместе с его отметками?', async () => {
     try { await api('/api/plans/delete?id=' + id, {method: 'POST'}); } catch (e) { return toast(e.message); }
     resetCaches(); renderMe(); toast('План удалён');
   });
+}
+async function addReminder() {
+  const kind = document.getElementById('remKind').value,
+        meal = document.getElementById('remMeal').value,
+        time = document.getElementById('remTime').value;
+  if (!time) return toast('Выбери время');
+  try {
+    await api(`/api/reminders/add?kind=${kind}&time=${encodeURIComponent(time)}`
+              + (kind === 'meal' ? `&meal=${encodeURIComponent(meal)}` : ''), {method: 'POST'});
+  } catch (e) { return toast(e.message); }
+  renderMe(); toast('Напоминание добавлено');
+}
+async function delReminder(id) {
+  try { await api('/api/reminders/delete?id=' + id, {method: 'POST'}); } catch (e) { return toast(e.message); }
+  renderMe(); toast('Напоминание удалено');
+}
+async function addSup() {
+  const name = document.getElementById('supName').value.trim(),
+        dose = document.getElementById('supDose').value.trim(),
+        meal = document.getElementById('supMeal').value,
+        timing = document.getElementById('supTiming').value;
+  if (!name) return toast('Впиши название добавки');
+  try {
+    await api(`/api/supplements/add?name=${encodeURIComponent(name)}&dose=${encodeURIComponent(dose)}`
+              + `&meal=${encodeURIComponent(meal)}&timing=${encodeURIComponent(timing)}`, {method: 'POST'});
+  } catch (e) { return toast(e.message); }
+  document.getElementById('supName').value = '';
+  document.getElementById('supDose').value = '';
+  supData = null; renderMe(); toast('Добавка сохранена');
+}
+async function delSup(id) {
+  try { await api('/api/supplements/delete?id=' + id, {method: 'POST'}); } catch (e) { return toast(e.message); }
+  supData = null; renderMe(); toast('Добавка удалена');
 }
 
 /* ---------- toast ---------- */
