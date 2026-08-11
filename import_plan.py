@@ -3,13 +3,13 @@ import sys, json
 from app.parser.rules import parse_file
 from app.db import init
 
-def save(path):
+def save(path, user_id=0):
     res = parse_file(path)
     con = init()
-    con.execute("UPDATE plans SET active=0")
+    con.execute("UPDATE plans SET active=0 WHERE user_id=?", (user_id,))
     cur = con.execute(
-        "INSERT INTO plans(title,source_file,raw_json) VALUES(?,?,?)",
-        (path.split("/")[-1], path, json.dumps(res, ensure_ascii=False)))
+        "INSERT INTO plans(title,source_file,raw_json,user_id) VALUES(?,?,?,?)",
+        (path.split("/")[-1], path, json.dumps(res, ensure_ascii=False), user_id))
     pid = cur.lastrowid
     for di, d in enumerate(res["days"]):
         for mi, m in enumerate(d["meals"]):
@@ -43,4 +43,5 @@ def save(path):
     return pid
 
 if __name__ == "__main__":
-    save(sys.argv[1])
+    # python import_plan.py план.docx [telegram_id]  — без id план уйдёт DEV-пользователю (0)
+    save(sys.argv[1], int(sys.argv[2]) if len(sys.argv) > 2 else 0)

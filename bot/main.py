@@ -16,6 +16,7 @@ ROOT = Path(__file__).parent.parent
 TOKEN = os.environ["BOT_TOKEN"]
 URL = os.environ["WEBAPP_URL"]
 ALLOWED = {int(x) for x in os.getenv("ALLOWED_USER_IDS", "").replace(" ", "").split(",") if x}
+ADMINS = {int(x) for x in os.getenv("ADMIN_USER_IDS", "").replace(" ", "").split(",") if x} or ALLOWED
 MORNING = os.getenv("REMIND_MORNING", "07:30")   # что взять с собой + сроки годности
 EVENING = os.getenv("REMIND_EVENING", "21:00")   # что подготовить на завтра
 
@@ -27,12 +28,18 @@ DAY_NAMES = ["понедельник", "вторник", "среду", "четв
 
 
 def allowed(m: Message) -> bool:
+    """Пустой ALLOWED_USER_IDS = бот открыт для всех; данные у каждого свои."""
     return not ALLOWED or m.from_user.id in ALLOWED
+
+
+def admin(m: Message) -> bool:
+    return m.from_user.id in ADMINS
 
 
 async def start(m: Message):
     if not allowed(m): return
-    await m.answer("Пришли файл с планом от диетолога — разберу и открою.", reply_markup=kb)
+    await m.answer("Пришли файл с планом от диетолога — разберу и открою.\n"
+                   "План, отметки и закупки у каждого пользователя свои.", reply_markup=kb)
 
 
 async def got_file(m: Message):
@@ -44,7 +51,7 @@ async def got_file(m: Message):
         path = Path(tmp) / name
         await bot.download(m.document, destination=path)
         try:
-            plan_id = save(str(path))
+            plan_id = save(str(path), m.from_user.id)
         except Exception as e:
             return await m.answer(f"Не смог разобрать: {e}")
     await m.answer(f"План загружен (#{plan_id}).", reply_markup=kb)
@@ -55,10 +62,10 @@ async def got_file(m: Message):
 DAY_FULL = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
 
 
-def day_menu_text(offset: int) -> str:
+def day_menu_text(offset: int, uid: int) -> str:
     """Меню на сегодня (offset=0) или завтра (offset=1) одним сообщением."""
     con = connect()
-    plan = _active_plan(con)
+    plan = _active_plan(con, uid)
     if not plan:
         return "План не загружен — пришли файл от диетолога."
     day = (date.today() + timedelta(days=offset)).weekday()
@@ -80,12 +87,12 @@ def day_menu_text(offset: int) -> str:
 
 async def cmd_today(m: Message):
     if not allowed(m): return
-    await m.answer(day_menu_text(0), reply_markup=kb)
+    await m.answer(day_menu_text(0, m.from_user.id), reply_markup=kb)
 
 
 async def cmd_tomorrow(m: Message):
     if not allowed(m): return
-    await m.answer(day_menu_text(1), reply_markup=kb)
+    await m.answer(day_menu_text(1, m.from_user.id), reply_markup=kb)
 
 
 async def cmd_myid(m: Message):
@@ -95,8 +102,9 @@ async def cmd_myid(m: Message):
 
 async def cmd_status(m: Message):
     if not allowed(m): return
+    uid = m.from_user.id
     con = connect()
-    plan = _active_plan(con)
+    plan = _active_plan(con, uid)
     if plan:
         n = con.execute("SELECT COUNT(*) c FROM plan_items WHERE plan_id=?",
                         (plan["id"],)).fetchone()["c"]
@@ -104,13 +112,14 @@ async def cmd_status(m: Message):
                 f"загружен {plan['created_at'][:10]}")
     else:
         head = "План не загружен."
-    fridge = con.execute("SELECT COUNT(*) c FROM purchases WHERE used=0").fetchone()["c"]
+    fridge = con.execute("SELECT COUNT(*) c FROM purchases WHERE used=0 AND user_id=?",
+                         (uid,)).fetchone()["c"]
     await m.answer(f"{head}\nВ холодильнике на учёте: {fridge}\n"
                    f"Напоминания: утром {MORNING}, вечером {EVENING}", reply_markup=kb)
 
 
 async def cmd_version(m: Message):
-    if not allowed(m): return
+    if not admin(m): return
     try:
         v = subprocess.run(["git", "-C", str(ROOT), "log", "-1",
                             "--format=%h · %ad · %s", "--date=format:%d.%m.%Y %H:%M"],
@@ -129,14 +138,14 @@ def _run_detached(args):
 
 
 async def cmd_update(m: Message):
-    if not allowed(m): return
+    if not admin(m): return
     await m.answer("Обновляюсь с GitHub… Сервисы перезапустятся, "
                    "через минуту проверь /version.")
     _run_detached([str(ROOT / "update.sh")])
 
 
 async def cmd_restart(m: Message):
-    if not allowed(m): return
+    if not admin(m): return
     await m.answer("Перезапускаю бота и веб…")
     _run_detached(["systemctl", "restart", "mealplan-bot", "mealplan-web"])
 
@@ -155,14 +164,21 @@ BOT_COMMANDS = [
 
 # ---------- напоминания ----------
 
-def _active_plan(con):
-    return con.execute("SELECT * FROM plans WHERE active=1 ORDER BY id DESC LIMIT 1").fetchone()
+def _active_plan(con, uid: int):
+    return con.execute("SELECT * FROM plans WHERE active=1 AND user_id=?"
+                       " ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
 
 
-def build_morning() -> str:
+def _users_with_plans(con):
+    return [r["user_id"] for r in con.execute(
+        "SELECT DISTINCT user_id FROM plans WHERE active=1"
+        " AND user_id IS NOT NULL AND user_id > 0")]
+
+
+def build_morning(uid: int) -> str:
     """Утро: что взять с собой (обед и полдник) + что истекает по сроку."""
     con = connect()
-    plan = _active_plan(con)
+    plan = _active_plan(con, uid)
     parts = []
     if plan:
         day = date.today().weekday()
@@ -182,9 +198,9 @@ def build_morning() -> str:
     expiring = con.execute(
         "SELECT pr.name, CAST(julianday(pu.expires_at) - julianday(date('now')) AS INT) d"
         " FROM purchases pu JOIN products pr ON pr.id = pu.product"
-        " WHERE pu.used=0 AND pu.frozen=0"
+        " WHERE pu.used=0 AND pu.frozen=0 AND pu.user_id=?"
         " AND julianday(pu.expires_at) - julianday(date('now')) <= 1"
-        " ORDER BY d").fetchall()
+        " ORDER BY d", (uid,)).fetchall()
     if expiring:
         lines = [f"  • {r['name']} — " + ("срок вышел" if r["d"] < 0 else
                  "сегодня последний день" if r["d"] == 0 else "до завтра") for r in expiring]
@@ -192,10 +208,10 @@ def build_morning() -> str:
     return "\n\n".join(parts)
 
 
-def build_evening() -> str:
+def build_evening(uid: int) -> str:
     """Вечер: что подготовить на завтра + подсказка готовить сразу на два дня."""
     con = connect()
-    plan = _active_plan(con)
+    plan = _active_plan(con, uid)
     if not plan:
         return ""
     tomorrow = (date.today() + timedelta(days=1)).weekday()
@@ -213,15 +229,14 @@ def build_evening() -> str:
     return "\n\n".join(parts)
 
 
-async def send_all(text: str):
-    if not text:
-        return
-    if not ALLOWED:
-        print("Напоминание не отправлено: ALLOWED_USER_IDS пуст")
-        return
-    for uid in ALLOWED:
+async def send_reminders(build):
+    """Каждому пользователю с активным планом — его собственный текст."""
+    con = connect()
+    for uid in _users_with_plans(con):
         try:
-            await bot.send_message(uid, text, reply_markup=kb)
+            text = build(uid)
+            if text:
+                await bot.send_message(uid, text, reply_markup=kb)
         except Exception as e:
             print(f"Не отправилось {uid}: {e}")
 
@@ -245,7 +260,7 @@ async def reminder_loop():
             if t <= cur < t + 30 and key not in sent:
                 sent.add(key)
                 try:
-                    await send_all(build())
+                    await send_reminders(build)
                 except Exception as e:
                     print(f"Ошибка напоминания {tag}: {e}")
         if len(sent) > 100:

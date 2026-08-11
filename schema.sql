@@ -12,7 +12,7 @@ CREATE INDEX IF NOT EXISTS idx_dishes_name ON dishes(dish);
 CREATE TABLE IF NOT EXISTS plans (
   id INTEGER PRIMARY KEY, title TEXT, date_from TEXT, date_to TEXT,
   source_file TEXT, raw_json TEXT, created_at TEXT DEFAULT (datetime('now')),
-  active INT DEFAULT 1, persons INT DEFAULT 1);
+  active INT DEFAULT 1, persons INT DEFAULT 1, user_id INT);
 
 CREATE TABLE IF NOT EXISTS plan_items (
   id INTEGER PRIMARY KEY, plan_id INT REFERENCES plans(id) ON DELETE CASCADE,
@@ -29,7 +29,8 @@ CREATE TABLE IF NOT EXISTS prep_tasks (
 
 CREATE TABLE IF NOT EXISTS purchases (
   id INTEGER PRIMARY KEY, product TEXT REFERENCES products(id), amount REAL, unit TEXT,
-  bought_at TEXT DEFAULT (date('now')), expires_at TEXT, frozen INT DEFAULT 0, used INT DEFAULT 0);
+  bought_at TEXT DEFAULT (date('now')), expires_at TEXT, frozen INT DEFAULT 0, used INT DEFAULT 0,
+  user_id INT);
 
 CREATE TABLE IF NOT EXISTS meal_logs (
   id INTEGER PRIMARY KEY, plan_id INT, day_index INT, meal TEXT,

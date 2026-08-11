@@ -1,4 +1,4 @@
-"""FastAPI: API мини-приложения + раздача web/."""
+"""FastAPI: API мини-приложения + раздача web/. Все данные — по пользователям."""
 from __future__ import annotations
 import os, json
 from fastapi import FastAPI, Header, HTTPException
@@ -18,15 +18,16 @@ def me(x_init_data: str | None):
     if not user: raise HTTPException(401, "нет доступа")
     return user
 
-def active_plan(con):
-    r = con.execute("SELECT * FROM plans WHERE active=1 ORDER BY id DESC LIMIT 1").fetchone()
-    if not r: raise HTTPException(404, "план не загружен")
+def active_plan(con, uid: int):
+    r = con.execute("SELECT * FROM plans WHERE active=1 AND user_id=?"
+                    " ORDER BY id DESC LIMIT 1", (uid,)).fetchone()
+    if not r: raise HTTPException(404, "План не загружен — пришли боту файл от диетолога")
     return r
 
 @app.get("/api/today")
 def today(day: int = 0, x_init_data: str = Header(None)):
-    me(x_init_data)
-    con = connect(); plan = active_plan(con)
+    uid = me(x_init_data)["id"]
+    con = connect(); plan = active_plan(con, uid)
     items = con.execute("SELECT * FROM plan_items WHERE plan_id=? AND day_index=?"
                         " ORDER BY meal_index, id", (plan["id"], day)).fetchall()
     recipes = {r["dish"]: {"title": r["title"],
@@ -51,31 +52,73 @@ def today(day: int = 0, x_init_data: str = Header(None)):
 
 @app.get("/api/cook")
 def cook(day: int = 0, days: int = 1, x_init_data: str = Header(None)):
-    me(x_init_data)
-    con = connect(); plan = active_plan(con)
+    uid = me(x_init_data)["id"]
+    con = connect(); plan = active_plan(con, uid)
     return {"days": days, "persons": plan["persons"],
             "list": cook_plan(plan["id"], day, days, plan["persons"])}
 
 @app.get("/api/shopping")
 def shopping(x_init_data: str = Header(None)):
-    me(x_init_data)
-    con = connect(); plan = active_plan(con)
+    uid = me(x_init_data)["id"]
+    con = connect(); plan = active_plan(con, uid)
     return build_shopping(plan["id"], persons=plan["persons"])
 
 @app.post("/api/log")
 def log(day: int, meal: str, status: str, x_init_data: str = Header(None)):
-    me(x_init_data)
-    con = connect(); plan = active_plan(con)
+    uid = me(x_init_data)["id"]
+    con = connect(); plan = active_plan(con, uid)
     con.execute("DELETE FROM meal_logs WHERE plan_id=? AND day_index=? AND meal=?",
                 (plan["id"], day, meal))
     con.execute("INSERT INTO meal_logs(plan_id,day_index,meal,status) VALUES(?,?,?,?)",
                 (plan["id"], day, meal, status))
     con.commit(); return {"ok": True}
 
+@app.post("/api/persons")
+def persons(n: int, x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect(); plan = active_plan(con, uid)
+    con.execute("UPDATE plans SET persons=? WHERE id=?", (max(1, min(8, n)), plan["id"]))
+    con.commit(); return {"persons": n}
+
+# ---------- мои планы ----------
+
+@app.get("/api/plans")
+def plans_list(x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect()
+    rows = con.execute(
+        "SELECT id, title, created_at, active, persons,"
+        " (SELECT COUNT(DISTINCT day_index) FROM plan_items WHERE plan_id=plans.id) days"
+        " FROM plans WHERE user_id=? ORDER BY id DESC", (uid,)).fetchall()
+    return {"plans": [dict(r) for r in rows]}
+
+@app.post("/api/plans/activate")
+def plan_activate(id: int, x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect()
+    r = con.execute("SELECT id FROM plans WHERE id=? AND user_id=?", (id, uid)).fetchone()
+    if not r: raise HTTPException(404, "это не твой план")
+    con.execute("UPDATE plans SET active=0 WHERE user_id=?", (uid,))
+    con.execute("UPDATE plans SET active=1 WHERE id=?", (id,))
+    con.commit(); return {"ok": True}
+
+@app.post("/api/plans/delete")
+def plan_delete(id: int, x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect()
+    r = con.execute("SELECT id FROM plans WHERE id=? AND user_id=?", (id, uid)).fetchone()
+    if not r: raise HTTPException(404, "это не твой план")
+    for t in ("plan_items", "recipes", "prep_tasks", "meal_logs"):
+        con.execute(f"DELETE FROM {t} WHERE plan_id=?", (id,))
+    con.execute("DELETE FROM plans WHERE id=?", (id,))
+    con.commit(); return {"ok": True}
+
+# ---------- холодильник ----------
+
 @app.post("/api/unpack")
 def unpack(payload: dict, x_init_data: str = Header(None)):
     """Разбор пакетов: записывает покупки и проставляет сроки годности."""
-    me(x_init_data)
+    uid = me(x_init_data)["id"]
     con = connect(); saved = 0
     for it in payload.get("items", []):
         prod = con.execute("SELECT * FROM products WHERE id=?", (it.get("product"),)).fetchone()
@@ -83,39 +126,33 @@ def unpack(payload: dict, x_init_data: str = Header(None)):
         frozen = int(bool(it.get("frozen")))
         shelf = 60 if frozen else prod["shelf_days"]
         con.execute(
-            "INSERT INTO purchases(product,amount,unit,expires_at,frozen)"
-            " VALUES(?,?,?,date('now', ?),?)",
+            "INSERT INTO purchases(product,amount,unit,expires_at,frozen,user_id)"
+            " VALUES(?,?,?,date('now', ?),?,?)",
             (prod["id"], it.get("amount"), it.get("unit") or prod["unit"],
-             f"+{shelf} day", frozen))
+             f"+{shelf} day", frozen, uid))
         saved += 1
     con.commit(); return {"saved": saved}
 
 @app.get("/api/fridge")
 def fridge(x_init_data: str = Header(None)):
     """Что лежит в холодильнике/морозилке и сколько дней осталось."""
-    me(x_init_data)
+    uid = me(x_init_data)["id"]
     con = connect()
     rows = con.execute(
         "SELECT pu.id, pu.product, pr.name, pu.amount, pu.unit, pu.frozen,"
         " pu.bought_at, pu.expires_at,"
         " CAST(julianday(pu.expires_at) - julianday(date('now')) AS INT) days_left"
         " FROM purchases pu JOIN products pr ON pr.id = pu.product"
-        " WHERE pu.used=0 ORDER BY pu.frozen, days_left, pr.name").fetchall()
+        " WHERE pu.used=0 AND pu.user_id=? ORDER BY pu.frozen, days_left, pr.name",
+        (uid,)).fetchall()
     return {"items": [dict(r) for r in rows]}
 
 @app.post("/api/use")
 def use(id: int, x_init_data: str = Header(None)):
     """Отметить покупку использованной (или вернуть обратно)."""
-    me(x_init_data)
+    uid = me(x_init_data)["id"]
     con = connect()
-    con.execute("UPDATE purchases SET used = 1 - used WHERE id=?", (id,))
+    con.execute("UPDATE purchases SET used = 1 - used WHERE id=? AND user_id=?", (id, uid))
     con.commit(); return {"ok": True}
-
-@app.post("/api/persons")
-def persons(n: int, x_init_data: str = Header(None)):
-    me(x_init_data)
-    con = connect(); plan = active_plan(con)
-    con.execute("UPDATE plans SET persons=? WHERE id=?", (max(1, min(8, n)), plan["id"]))
-    con.commit(); return {"persons": n}
 
 app.mount("/", StaticFiles(directory="web", html=True), name="web")
