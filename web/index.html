@@ -465,9 +465,8 @@ async function renderToday() {
         const ri = recipeReg.push(it.recipe) - 1;
         recLink = ` <button class="tag rcp" onclick="openRec(${ri}, '${esc(it.name)}')">рецепт</button>`;
       }
-      return `<div class="row"><span class="n">${
-        it.url ? `<a class="link" href="${esc(it.url)}" target="_blank">${esc(it.name)}</a>` : esc(it.name)
-      }${recLink}</span><span class="q num">${amt(it.qty_min, it.qty_max, it.unit)}</span></div>`;
+      return `<div class="row"><span class="n">${esc(it.name)}${recLink}</span>
+        <span class="q num">${amt(it.qty_min, it.qty_max, it.unit)}</span></div>`;
     }).join('') + supsAfter;
     return `<div class="card">
       <div class="meal-h"><span class="t">${esc(m.meal)}</span>
