@@ -1,6 +1,7 @@
 """FastAPI: API мини-приложения + раздача web/. Все данные — по пользователям."""
 from __future__ import annotations
-import os, json
+import os, json, random
+from datetime import date
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
 from app.db import connect, init, current_plan, persons_of, set_current_plan, set_persons
@@ -162,6 +163,82 @@ def plan_delete(id: int, x_init_data: str = Header(None)):
     con.execute("DELETE FROM plans WHERE id=?", (id,))
     con.execute("UPDATE user_prefs SET current_plan_id=NULL WHERE current_plan_id=?", (id,))
     con.commit(); return {"ok": True}
+
+# ---------- генерация случайного меню ----------
+
+DAY_NAMES_FULL = ["Понедельник", "Вторник", "Среда", "Четверг",
+                  "Пятница", "Суббота", "Воскресенье"]
+
+@app.post("/api/plans/generate")
+def plan_generate(x_init_data: str = Header(None)):
+    """Случайная неделя из готовых приёмов пищи всех доступных планов.
+    Принцип планов диетолога сохранён: приёмы берутся целиком (состав и граммовки
+    не перемешиваются), дни спарены Пн=Вт, Ср=Чт, Пт=Сб + отдельное воскресенье."""
+    uid = me(x_init_data)["id"]
+    con = connect()
+    plan_ids = [r["id"] for r in con.execute(
+        "SELECT id FROM plans WHERE user_id=? OR user_id IS NULL", (uid,))]
+    pools: dict = {m: {} for m in MEALS}
+    for pid in plan_ids:
+        groups: dict = {}
+        for r in con.execute(
+                "SELECT day_index, meal, name, qty_min, qty_max, unit FROM plan_items"
+                " WHERE plan_id=? ORDER BY day_index, meal_index, id", (pid,)):
+            groups.setdefault((r["day_index"], r["meal"]), []).append(r)
+        for (_, meal), items in groups.items():
+            if meal not in pools: continue
+            sig = tuple(i["name"] for i in items)   # дедуп по составу, граммовки не важны
+            pools[meal].setdefault(sig, [
+                {"name": i["name"], "qty_min": i["qty_min"],
+                 "qty_max": i["qty_max"], "unit": i["unit"]} for i in items])
+    if not any(pools.values()):
+        raise HTTPException(404, "Нет планов, из которых можно собрать меню")
+    # 4 уникальных дневных меню: Пн(=Вт), Ср(=Чт), Пт(=Сб), Вс
+    slots = [[] for _ in range(4)]
+    for meal in MEALS:
+        variants = list(pools[meal].values())
+        if not variants: continue
+        random.shuffle(variants)
+        picks = (variants * (4 // len(variants) + 1))[:4] if len(variants) < 4 else variants[:4]
+        for i in range(4):
+            slots[i].append({"meal": meal, "optional": int(meal == "Второй ужин"),
+                             "items": picks[i]})
+    slot_of_day = [0, 0, 1, 1, 2, 2, 3]
+    days = [{"day": DAY_NAMES_FULL[d], "meals": slots[slot_of_day[d]]} for d in range(7)]
+    return {"days": days}
+
+@app.post("/api/plans/save_generated")
+def plan_save_generated(payload: dict, x_init_data: str = Header(None)):
+    """Сохранить сгенерированное меню как свой план (в «Мои планы»)."""
+    uid = me(x_init_data)["id"]
+    days = payload.get("days") or []
+    if not isinstance(days, list) or not (1 <= len(days) <= 7):
+        raise HTTPException(400, "нечего сохранять")
+    con = connect()
+    title = f"Случайное меню от {date.today().strftime('%d.%m')}"
+    cur = con.execute("INSERT INTO plans(title,source_file,raw_json,active,user_id)"
+                      " VALUES(?,?,?,0,?)",
+                      (title, "generated", json.dumps(payload, ensure_ascii=False)[:200000], uid))
+    pid = cur.lastrowid
+    for di, d in enumerate(days[:7]):
+        day_name = str(d.get("day") or DAY_NAMES_FULL[di])[:20]
+        for mi, m in enumerate((d.get("meals") or [])[:6]):
+            meal = str(m.get("meal") or "")[:30]
+            if meal not in MEALS: continue
+            for it in (m.get("items") or [])[:15]:
+                name = str(it.get("name") or "").strip()[:120]
+                if not name: continue
+                def num(v):
+                    try: return float(v)
+                    except (TypeError, ValueError): return None
+                con.execute(
+                    "INSERT INTO plan_items(plan_id,day_index,day_name,meal,meal_index,"
+                    "optional,name,qty_min,qty_max,unit) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (pid, di, day_name, meal, mi, int(bool(m.get("optional"))),
+                     name, num(it.get("qty_min")), num(it.get("qty_max")),
+                     str(it.get("unit") or "")[:10] or None))
+    con.commit()
+    return {"ok": True, "plan_id": pid, "title": title}
 
 # ---------- напоминания ----------
 

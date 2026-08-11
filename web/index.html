@@ -208,12 +208,8 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 
   <!-- ===== НЕДЕЛЯ ===== -->
   <div class="scr" id="s-week">
-    <div class="imp">
-      <div class="big">Новый план от диетолога</div>
-      <div class="s">Перешли файл боту в чат — он разберёт его сам<br>и план появится здесь.</div>
-    </div>
     <div class="sect" id="weekSect">Неделя</div>
-    <div class="card" id="weekList"><div class="empty">Загрузка…</div></div>
+    <div id="weekList"><div class="card"><div class="empty">Загрузка…</div></div></div>
     <div id="weekFoot"></div>
   </div>
 
@@ -259,6 +255,8 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
       <div>План рассчитан на одного. При увеличении все веса, закупки и готовка умножаются.</div></div>
     <div class="sect">Планы</div>
     <div class="card" id="myPlans"><div class="empty">Загрузка…</div></div>
+    <div class="card"><button class="btn gh add-toggle" id="genBtn" onclick="genMenu()">🎲 Сгенерировать меню на неделю</button></div>
+    <div id="genPreview" style="display:none"></div>
 
     <div class="sect">Напоминания</div>
     <div class="card" id="remList"><div class="empty">Загрузка…</div></div>
@@ -564,20 +562,27 @@ function renderMode() {
 }
 
 /* ---------- неделя ---------- */
+const MEAL_ORDER = ['Завтрак', 'Обед', 'Полдник', 'Ужин', 'Второй ужин'];
 async function renderWeek() {
   let days;
   try { days = await Promise.all(DS.map((_, i) => loadDay(i))); } catch (e) {
-    document.getElementById('weekList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    document.getElementById('weekList').innerHTML = `<div class="card"><div class="empty">${esc(e.message)}</div></div>`;
     return;
   }
   document.getElementById('weekSect').textContent = planTitle.replace(/^План питания\s*/i, '') || 'Неделя';
   const nums = dayNums();
   document.getElementById('weekList').innerHTML = days.map((t, i) => {
-    const mains = t.meals.map(m => m.items[0] && m.items[0].name).filter(Boolean);
     const prev = t.same_as.filter(x => x < i);
-    return `<div class="wk"><div class="d">${DS[i]}${nums ? `<b class="num">${nums[i]}</b>` : ''}</div>
-      <div class="m">${prev.length ? `То же, что ${prev.map(x => 'в ' + DS[x]).join(', ')}` : mains.map(esc).join(' · ')}
-        ${prev.length ? `<br><span class="dup">= ${prev.map(x => (dayCache[x] && dayCache[x].day_name || DS[x]).toLowerCase()) .join(', ')}</span>` : ''}</div></div>`;
+    const meals = [...t.meals].sort((a, b) => MEAL_ORDER.indexOf(a.meal) - MEAL_ORDER.indexOf(b.meal));
+    const rows = meals.map(m => `<div class="row">
+        <span class="n">${esc(m.items[0] ? m.items[0].name : '—')}</span>
+        <span class="q">${esc(m.meal)}</span></div>`).join('');
+    return `<div class="card">
+      <div class="meal-h"><span class="t">${esc(t.day_name || DS[i])}</span>
+        ${prev.length ? `<span class="tag">= ${DS[prev[0]]}</span>` : ''}
+        ${nums ? `<span class="time num">${nums[i]}</span>` : ''}</div>
+      <div class="rows" style="padding-bottom:11px">${rows}</div>
+    </div>`;
   }).join('');
   const uniq = new Set(days.map((t, i) => {
     const prev = t.same_as.filter(x => x < i);
@@ -587,7 +592,7 @@ async function renderWeek() {
   const uniqMeals = days.reduce((s, t, i) => s + (t.same_as.some(x => x < i) ? 0 : t.meals.length), 0);
   document.getElementById('weekFoot').innerHTML = uniq < 7
     ? `<div class="note green"><span class="ic">♻️</span><div><b>${uniqMeals} уникальных приёмов из ${totalMeals}</b><br>
-        Часть недели повторяется — готовить можно реже.</div></div>` : '';
+        Дни с плашкой «=» повторяют предыдущие — готовить можно раз на два дня.</div></div>` : '';
 }
 
 /* ---------- закупки ---------- */
@@ -736,6 +741,50 @@ function delRecipe(id) {
     try { await api('/api/recipes/delete?id=' + id, {method: 'POST'}); } catch (e) { return toast(e.message); }
     dayCache = {}; renderRecipes(); toast('Рецепт удалён');
   });
+}
+
+/* ---------- генерация меню ---------- */
+let genData = null;
+async function genMenu() {
+  const btn = document.getElementById('genBtn');
+  btn.textContent = 'Собираю меню…';
+  try { genData = await api('/api/plans/generate', {method: 'POST'}); }
+  catch (e) { btn.textContent = '🎲 Сгенерировать меню на неделю'; return toast(e.message); }
+  btn.textContent = '🎲 Сгенерировать меню на неделю';
+  renderGenPreview();
+}
+function renderGenPreview() {
+  const el = document.getElementById('genPreview');
+  el.style.display = '';
+  const rows = genData.days.map((d, i) => {
+    const prev = (i === 1 || i === 3 || i === 5);
+    const mains = d.meals.map(m => m.items[0] && m.items[0].name).filter(Boolean);
+    return `<div class="wk"><div class="d">${DS[i]}</div>
+      <div class="m">${prev ? `То же, что в ${DS[i - 1]}` : mains.map(esc).join(' · ')}</div></div>`;
+  }).join('');
+  el.innerHTML = `<div class="card">${rows}</div>
+    <div class="note green"><span class="ic">♻️</span><div>Приёмы взяты целиком из планов диетолога,
+      дни спарены (Пн=Вт, Ср=Чт, Пт=Сб) — готовить можно раз на два дня.</div></div>
+    <div class="note-acts" style="margin:0 2px 12px">
+      <button class="btn pri" onclick="saveGen()">Сохранить в мои планы</button>
+      <button class="btn" onclick="genMenu()">Ещё вариант</button>
+      <button class="btn" onclick="cancelGen()">Отменить</button>
+    </div>`;
+  el.scrollIntoView({behavior: 'smooth', block: 'nearest'});
+}
+async function saveGen() {
+  if (!genData) return;
+  let r;
+  try { r = await api('/api/plans/save_generated', {method: 'POST',
+    headers: {'Content-Type': 'application/json'}, body: JSON.stringify(genData)}); }
+  catch (e) { return toast(e.message); }
+  cancelGen(); renderMe();
+  toast(`«${r.title}» сохранён — выбери его в списке, когда захочешь`);
+}
+function cancelGen() {
+  genData = null;
+  const el = document.getElementById('genPreview');
+  el.style.display = 'none'; el.innerHTML = '';
 }
 
 /* ---------- профиль ---------- */
