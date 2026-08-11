@@ -1,7 +1,11 @@
 """Бот: принимает пересланный файл плана, шлёт напоминания, открывает мини-приложение."""
 import asyncio, os, shutil, subprocess, sys, tempfile
-from datetime import date, datetime, timedelta
+from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
+try:
+    from zoneinfo import ZoneInfo
+except ImportError:          # старые питоны без zoneinfo — работаем по часам сервера
+    ZoneInfo = None
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from aiogram import Bot, Dispatcher, F
 from aiogram.filters import Command, CommandStart
@@ -274,17 +278,45 @@ def _minutes(hhmm: str) -> int:
     return int(h) * 60 + int(m)
 
 
+def user_tz(con, uid: int):
+    """Пояс из телефона пользователя: IANA («Europe/Moscow») или смещение («+03:00»).
+    Нет данных — None, время считается по часам сервера."""
+    r = con.execute("SELECT tz FROM user_prefs WHERE user_id=?", (uid,)).fetchone()
+    name = (r["tz"] or "").strip() if r else ""
+    if not name:
+        return None
+    if name[0] in "+-":
+        try:
+            sign = 1 if name[0] == "+" else -1
+            h, m = name[1:].split(":")
+            return timezone(sign * timedelta(hours=int(h), minutes=int(m)))
+        except Exception:
+            return None
+    if ZoneInfo:
+        try:
+            return ZoneInfo(name)
+        except Exception:
+            return None
+    return None
+
+
 async def reminder_loop():
-    """Раз в минуту сверяет время с настройками пользователей. Шлёт в 30-минутном
-    окне после цели — чтобы после перезапуска не рассылать вчерашнее."""
+    """Раз в минуту сверяет время с настройками пользователей — по часовому поясу
+    телефона каждого. Шлёт в 30-минутном окне после цели, чтобы после перезапуска
+    не рассылать вчерашнее."""
     sent = set()
     while True:
-        now = datetime.now()
-        cur = now.hour * 60 + now.minute
+        now_utc = datetime.now(timezone.utc)
         try:
             con = connect()
+            tz_cache = {}
             for r in con.execute("SELECT * FROM user_reminders WHERE enabled=1"):
-                key = (now.date(), r["id"])
+                uid = r["user_id"]
+                if uid not in tz_cache:
+                    tz_cache[uid] = user_tz(con, uid)
+                local = now_utc.astimezone(tz_cache[uid]) if tz_cache[uid] else datetime.now()
+                cur = local.hour * 60 + local.minute
+                key = (local.date(), r["id"])
                 try:
                     t = _minutes(r["time"])
                 except Exception:
@@ -298,7 +330,8 @@ async def reminder_loop():
         except Exception as e:
             print(f"Ошибка цикла напоминаний: {e}")
         if len(sent) > 500:
-            sent = {k for k in sent if k[0] >= now.date()}
+            today_utc = now_utc.date()
+            sent = {k for k in sent if (k[0] - today_utc).days >= -1}
         await asyncio.sleep(60)
 
 

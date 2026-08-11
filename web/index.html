@@ -278,6 +278,8 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
           <input type="time" id="remTime" value="09:00">
           <button class="btn pri" onclick="addReminder()">Добавить</button>
         </div>
+        <div style="font-size:12px;color:var(--ink3)">Время — по часам твоего телефона,
+          пояс определяется автоматически.</div>
       </div></div>
     </div>
 
@@ -893,7 +895,20 @@ function toast(m) {
 }
 
 /* ---------- старт ---------- */
+function sendTz() {
+  // часовой пояс телефона — по нему бот шлёт напоминания
+  try {
+    const off = -new Date().getTimezoneOffset();
+    const offStr = (off >= 0 ? '+' : '-') +
+      String(Math.floor(Math.abs(off) / 60)).padStart(2, '0') + ':' +
+      String(Math.abs(off) % 60).padStart(2, '0');
+    let tz = '';
+    try { tz = Intl.DateTimeFormat().resolvedOptions().timeZone || ''; } catch (e) {}
+    api('/api/tz?tz=' + encodeURIComponent(tz || offStr), {method: 'POST'}).catch(() => {});
+  } catch (e) {}
+}
 (async function init() {
+  sendTz();
   try { await loadDay(day); } catch (e) { toast(e.message); }
   renderDays(); paint();
 })();

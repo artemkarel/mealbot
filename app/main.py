@@ -114,6 +114,17 @@ def persons(n: int, x_init_data: str = Header(None)):
     set_persons(con, uid, max(1, min(8, n)))
     con.commit(); return {"persons": n}
 
+@app.post("/api/tz")
+def set_tz(tz: str = "", x_init_data: str = Header(None)):
+    """Часовой пояс телефона — приложение шлёт его при каждом открытии.
+    По нему бот считает время напоминаний."""
+    uid = me(x_init_data)["id"]
+    tz = "".join(c for c in tz.strip() if c.isalnum() or c in "/_+-:")[:64]
+    con = connect()
+    con.execute("INSERT INTO user_prefs(user_id, tz) VALUES(?,?)"
+                " ON CONFLICT(user_id) DO UPDATE SET tz=excluded.tz", (uid, tz or None))
+    con.commit(); return {"tz": tz}
+
 # ---------- мои и общие планы ----------
 # user_id IS NULL — общий план: виден всем, «Открыть» делает его текущим для тебя.
 # Отметки хранятся по пользователям, поэтому общим планом можно пользоваться всем сразу.

@@ -17,6 +17,9 @@ def _migrate(con):
         cols = [r[1] for r in con.execute(f"PRAGMA table_info({table})")]
         if "user_id" not in cols:
             con.execute(f"ALTER TABLE {table} ADD COLUMN user_id INT")
+    cols = [r[1] for r in con.execute("PRAGMA table_info(user_prefs)")]
+    if cols and "tz" not in cols:
+        con.execute("ALTER TABLE user_prefs ADD COLUMN tz TEXT")
     con.execute("CREATE INDEX IF NOT EXISTS idx_plans_user ON plans(user_id, active)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_purchases_user ON purchases(user_id, used)")
 
