@@ -166,6 +166,24 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .toast.on{opacity:.95}
 .link{color:var(--accent);text-decoration:none;border-bottom:1px solid #BFD5C6;cursor:pointer}
 .empty{text-align:center;color:var(--ink2);font-size:13.5px;padding:28px 14px;line-height:1.5}
+
+/* КБЖУ дня */
+.macro{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:var(--r);
+  padding:11px 14px;margin-bottom:10px}
+.macro svg{flex:0 0 auto}
+.macro .t1{font-weight:600;font-size:14.5px}
+.macro .t2{font-size:12.5px;color:var(--ink2);margin-top:2px}
+.macro .t3{font-size:11px;color:var(--ink3);margin-top:2px}
+.dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;vertical-align:1px}
+
+/* шторка замены приёма */
+.sheet-wrap{position:fixed;inset:0;z-index:40;display:none}
+.sheet-wrap.on{display:block}
+.sheet-bg{position:absolute;inset:0;background:rgba(20,25,22,.4)}
+.sheet{position:absolute;left:0;right:0;bottom:0;margin:0 auto;max-width:400px;background:var(--bg);
+  border-radius:20px 20px 0 0;padding:16px 12px calc(14px + env(safe-area-inset-bottom,0px));
+  max-height:76vh;overflow-y:auto;overscroll-behavior:contain;
+  box-shadow:0 -10px 40px rgba(0,0,0,.25)}
 </style>
 
 <div class="phone">
@@ -182,6 +200,7 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 
   <!-- ===== СЕГОДНЯ ===== -->
   <div class="scr" id="s-today">
+    <div id="macroCard"></div>
     <div id="prepNotes"></div>
     <div class="sect">Приёмы пищи</div>
     <div id="meals"><div class="empty">Загрузка…</div></div>
@@ -218,6 +237,10 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
     <div class="seg" id="shopSeg">
       <button class="on" onclick="setShop(0,this)">Закупка 1</button>
       <button onclick="setShop(1,this)">Закупка 2</button>
+    </div>
+    <div class="seg" id="grpSeg" style="margin-top:-6px">
+      <button class="on" onclick="setGrp('cat',this)">По категориям</button>
+      <button onclick="setGrp('place',this)">По магазинам</button>
     </div>
     <div id="shopHead"></div>
     <div id="persShop"></div>
@@ -316,6 +339,10 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
     <button onclick="go('me',this)"><span class="i">👤</span>Профиль</button>
   </div>
 </div>
+<div class="sheet-wrap" id="sheetWrap">
+  <div class="sheet-bg" onclick="closeSheet()"></div>
+  <div class="sheet" id="sheetBody"></div>
+</div>
 <div class="toast" id="toast"></div>
 
 <script>
@@ -344,6 +371,7 @@ let curRecipe = null;                        // рецепт для экрана
 let supData = null;                          // БАДы пользователя (null = не загружены)
 let nav = {tab: 'today', stack: []};
 let st = {shop: 0, cookDays: 1, editPlace: null,
+          shopGroup: localStorage.getItem('shopGroup') || 'cat',
           checked: new Set(JSON.parse(localStorage.getItem('shopChecked') || '[]'))};
 
 /* ---------- утилиты ---------- */
@@ -453,6 +481,7 @@ async function renderToday() {
   if (supData === null) {
     try { supData = (await api('/api/supplements')).supplements; } catch (e) { supData = []; }
   }
+  document.getElementById('macroCard').innerHTML = macroCard(t.macros);
   recipeReg = [];
   document.getElementById('meals').innerHTML = t.meals.map(m => {
     const supRow = s => `<div class="row"><span class="n" style="color:var(--blue)">💊 ${esc(s.name)}${
@@ -460,18 +489,23 @@ async function renderToday() {
     const sups = supData.filter(s => s.meal === m.meal);
     const supsBefore = sups.filter(s => s.timing === 'до еды').map(supRow).join('');
     const supsAfter = sups.filter(s => s.timing !== 'до еды').map(supRow).join('');
+    const kcal = t.macros && t.macros.meals[m.meal];
     const rows = supsBefore + m.items.map(it => {
       let recLink = '';
       if (it.recipe) {
         const ri = recipeReg.push(it.recipe) - 1;
-        recLink = ` <button class="tag rcp" onclick="openRec(${ri}, '${esc(it.name)}')">рецепт</button>`;
+        recLink = ` <button class="tag rcp" onclick="event.stopPropagation();openRec(${ri}, '${esc(it.name)}')">рецепт</button>`;
       }
-      return `<div class="row"><span class="n">${esc(it.name)}${recLink}</span>
+      // тап по блюду — шторка «заменить приём»
+      return `<div class="row" style="cursor:pointer" onclick="openSwap('${esc(m.meal)}')">
+        <span class="n">${esc(it.name)}${recLink}</span>
         <span class="q num">${amt(it.qty_min, it.qty_max, it.unit)}</span></div>`;
     }).join('') + supsAfter;
     return `<div class="card">
       <div class="meal-h"><span class="t">${esc(m.meal)}</span>
-        ${m.optional ? '<span class="tag opt">по желанию</span>' : ''}</div>
+        ${m.swapped ? '<span class="tag" style="background:var(--blue-bg);color:var(--blue)">заменено</span>' : ''}
+        ${m.optional ? '<span class="tag opt">по желанию</span>' : ''}
+        ${kcal ? `<span class="time num">≈${kcal} ккал</span>` : ''}</div>
       <div class="rows" style="padding-bottom:10px">${rows}</div>
       ${m.note ? `<div style="padding:0 14px 12px;font-size:12.5px;color:var(--ink2)">${esc(m.note)}</div>` : ''}
     </div>`;
@@ -493,6 +527,82 @@ let recipeReg = [];
 function openRec(i, title) {
   curRecipe = recipeReg[i];
   push('mode', title || (curRecipe && curRecipe.title) || 'Рецепт', 'Рецепт');
+}
+
+/* ---------- КБЖУ дня ---------- */
+function macroCard(mac) {
+  if (!mac || !mac.total || !mac.total.kcal) return '';
+  const t = mac.total, cal = [t.prot * 4, t.fat * 9, t.carb * 4];
+  const sum = cal[0] + cal[1] + cal[2] || 1, C = 2 * Math.PI * 15.9;
+  const cols = ['var(--accent)', 'var(--amber)', 'var(--blue)'];
+  let off = 0;
+  const segs = cal.map((v, i) => {
+    const len = v / sum * C;
+    const s = `<circle r="15.9" cx="21" cy="21" fill="none" stroke="${cols[i]}" stroke-width="4.5"
+      stroke-dasharray="${len.toFixed(1)} ${(C - len).toFixed(1)}" stroke-dashoffset="${(-off).toFixed(1)}"
+      transform="rotate(-90 21 21)" stroke-linecap="butt"/>`;
+    off += len; return s;
+  }).join('');
+  return `<div class="macro">
+    <svg width="42" height="42" viewBox="0 0 42 42">${segs}</svg>
+    <div>
+      <div class="t1 num">≈ ${t.kcal} ккал в день</div>
+      <div class="t2 num"><span class="dot" style="background:var(--accent)"></span>Белки ${t.prot} г
+        <span class="dot" style="background:var(--amber);margin-left:8px"></span>Жиры ${t.fat} г
+        <span class="dot" style="background:var(--blue);margin-left:8px"></span>Угл. ${t.carb} г</div>
+      <div class="t3">на одного, примерно по справочнику блюд</div>
+    </div></div>`;
+}
+
+/* ---------- «не хочу это» — замена приёма ---------- */
+let swapMeal = null, swapVars = [];
+function showSheet(html) {
+  document.getElementById('sheetBody').innerHTML = html;
+  document.getElementById('sheetWrap').classList.add('on');
+  document.body.style.overflow = 'hidden';        // фон не прокручивается под шторкой
+}
+function closeSheet() {
+  document.getElementById('sheetWrap').classList.remove('on');
+  document.body.style.overflow = '';
+}
+async function openSwap(meal) {
+  swapMeal = meal;
+  showSheet('<div class="empty">Подбираю варианты…</div>');
+  let r;
+  try { r = await api(`/api/swap/options?day=${day}&meal=${encodeURIComponent(meal)}`); }
+  catch (e) {
+    return showSheet(`<div class="empty">${esc(e.message)}</div>
+      <div class="note-acts"><button class="btn" onclick="closeSheet()">Закрыть</button></div>`);
+  }
+  swapVars = r.variants;
+  const cards = r.variants.map((v, i) =>
+    `<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="applySwap(${i})">
+      <div class="rows" style="padding:7px 14px">${v.items.map(it =>
+        `<div class="row"><span class="n">${esc(it.name)}</span>
+         <span class="q num">${amt(it.qty_min, it.qty_max, it.unit)}</span></div>`).join('')}</div>
+    </div>`).join('');
+  showSheet(`<div style="font-weight:600;font-size:16px">Заменить «${esc(meal)}»?</div>
+    <div style="font-size:12.5px;color:var(--ink2);margin:3px 0 12px">Готовые приёмы из твоих планов —
+      состав и граммовки диетолога не перемешиваются. Тапни вариант, чтобы выбрать.</div>
+    ${cards || '<div class="empty">Других вариантов этого приёма в планах нет</div>'}
+    <div class="note-acts" style="margin-top:10px">
+      ${r.variants.length ? `<button class="btn" onclick="openSwap(swapMeal)">🎲 Ещё варианты</button>` : ''}
+      ${r.swapped ? `<button class="btn" onclick="revertSwap()">↩ Вернуть из плана</button>` : ''}
+      <button class="btn" onclick="closeSheet()">Отмена</button></div>`);
+}
+async function applySwap(i) {
+  try {
+    await api('/api/swap', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({day, meal: swapMeal, items: swapVars[i].items})});
+  } catch (e) { return toast(e.message); }
+  closeSheet(); resetCaches(); renderToday();
+  toast('Приём заменён — закупки и готовка пересчитаны');
+}
+async function revertSwap() {
+  try { await api(`/api/swap/revert?day=${day}&meal=${encodeURIComponent(swapMeal)}`, {method: 'POST'}); }
+  catch (e) { return toast(e.message); }
+  closeSheet(); resetCaches(); renderToday();
+  toast('Вернул как в плане');
 }
 
 /* ---------- что готовить ---------- */
@@ -607,24 +717,53 @@ function setShop(i, btn) {
   [...document.querySelectorAll('#shopSeg button')].forEach(b => b.classList.remove('on'));
   btn.classList.add('on'); renderShop();
 }
+function setGrp(g, btn) {
+  st.shopGroup = g; localStorage.setItem('shopGroup', g);
+  [...document.querySelectorAll('#grpSeg button')].forEach(b => b.classList.remove('on'));
+  btn.classList.add('on'); renderShop();
+}
 function placeLabel(p) {
   try { return new URL(p).hostname.replace(/^www\./, ''); } catch (e) { return p; }
 }
+const NO_PLACE = 'Без места покупки';
 async function renderShop() {
   const [cls, ic, txt] = SHOPHEAD[st.shop];
   document.getElementById('shopHead').innerHTML = `<div class="note ${cls}"><span class="ic">${ic}</span><div>${txt}</div></div>`;
   document.getElementById('persShop').innerHTML = persBar('Умножает все количества в списке');
+  [...document.querySelectorAll('#grpSeg button')].forEach((b, i) =>
+    b.classList.toggle('on', (i === 0) === (st.shopGroup === 'cat')));
   let s;
-  try { s = shopData || (shopData = await api('/api/shopping')); } catch (e) {
-    document.getElementById('shopList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
-    return;
+  try {
+    s = shopData || (shopData = await api('/api/shopping'));
+    // кэш для магазина без связи: галочки и так живут в телефоне
+    try { localStorage.setItem('shopCache', JSON.stringify(s)); } catch (e) {}
+  } catch (e) {
+    const c = localStorage.getItem('shopCache');
+    if (!c) {
+      document.getElementById('shopList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+      return;
+    }
+    s = JSON.parse(c);
+    document.getElementById('shopHead').innerHTML +=
+      `<div class="note amber"><span class="ic">📶</span><div><b>Нет связи</b> —
+        показываю сохранённый список. Галочки работают и без сети.</div></div>`;
   }
   const items = st.shop === 0 ? s.part1 : s.part2;
   const groups = {};
-  for (const it of items) (groups[it.category || 'Прочее'] ||= []).push(it);
-  let total = 0;
-  document.getElementById('shopList').innerHTML = Object.entries(groups).map(([grp, arr]) => {
+  for (const it of items) {
+    const g = st.shopGroup === 'place'
+      ? (it.place ? placeLabel(it.place) : NO_PLACE)
+      : (it.category || 'Прочее');
+    (groups[g] ||= []).push(it);
+  }
+  const names = Object.keys(groups);
+  if (st.shopGroup === 'place')
+    names.sort((a, b) => (a === NO_PLACE) - (b === NO_PLACE) || a.localeCompare(b, 'ru'));
+  let total = 0, bought = 0;
+  document.getElementById('shopList').innerHTML = names.map(grp => {
+    const arr = groups[grp];
     total += arr.length;
+    bought += arr.filter(it => st.checked.has(st.shop + ':' + it.id + ':' + it.tag)).length;
     return `<div class="grp">${esc(grp)}</div>` + arr.map(it => {
       const key = st.shop + ':' + it.id + ':' + it.tag;
       const on = st.checked.has(key);
@@ -657,7 +796,7 @@ async function renderShop() {
   }).join('') || '<div class="empty">Список пуст</div>';
   document.getElementById('shopFoot').innerHTML =
     `<div style="text-align:center;color:var(--ink3);font-size:12.5px;padding:6px 0 2px">
-      ${total} позиций${P > 1 ? ` · на ${P} чел.` : ''}</div>`;
+      ${bought ? `куплено ${bought} из ${total}` : `${total} позиций`}${P > 1 ? ` · на ${P} чел.` : ''}</div>`;
 }
 function tick(k) {
   st.checked.has(k) ? st.checked.delete(k) : st.checked.add(k);

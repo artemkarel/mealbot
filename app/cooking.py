@@ -6,12 +6,18 @@ def _resolve(con, name):
     rows = con.execute("SELECT * FROM dishes WHERE dish=?", (name,)).fetchall()
     return [dict(r) for r in rows]
 
-def cook_plan(plan_id: int, day_index: int, days: int = 1, persons: int = 1):
-    """Что и сколько готовить. days=2 — сразу на два одинаковых дня."""
+def cook_plan(plan_id: int, day_index: int, days: int = 1, persons: int = 1, items=None):
+    """Что и сколько готовить. days=2 — сразу на два одинаковых дня.
+    items — позиции дня с учётом замен (иначе берутся из плана как есть)."""
     con = connect()
-    items = con.execute(
-        "SELECT name, meal, COALESCE(qty_max,qty_min) q, unit FROM plan_items"
-        " WHERE plan_id=? AND day_index=?", (plan_id, day_index)).fetchall()
+    if items is None:
+        items = con.execute(
+            "SELECT name, meal, COALESCE(qty_max,qty_min) q, unit FROM plan_items"
+            " WHERE plan_id=? AND day_index=?", (plan_id, day_index)).fetchall()
+    else:
+        items = [{"name": i["name"], "meal": i["meal"], "unit": i["unit"],
+                  "q": i["qty_max"] if i["qty_max"] is not None else i["qty_min"]}
+                 for i in items]
     agg = {}
     for it in items:
         for d in _resolve(con, it["name"]):
@@ -19,15 +25,20 @@ def cook_plan(plan_id: int, day_index: int, days: int = 1, persons: int = 1):
             prod = con.execute("SELECT * FROM products WHERE id=?", (d["product"],)).fetchone()
             if not prod: continue
             cooked = (it["q"] or 0) * days * persons
+            unit = it["unit"]
+            # план считает штуками, а продукт в граммах (тартин, онигири) — переводим
+            if (unit or "") == "шт" and (prod["unit"] or "") != "шт":
+                cooked *= prod["unit_g"] or 1
+                unit = prod["unit"]
             if d["amount"]:                       # фиксированная раскладка — в единицах продукта
                 raw, raw_unit, fixed = d["amount"] * days * persons, prod["unit"], True
             elif d["coef"]:                       # coef = готовый / сырой
-                raw, raw_unit, fixed = cooked / d["coef"], it["unit"], False
+                raw, raw_unit, fixed = cooked / d["coef"], unit, False
             else:
-                raw, raw_unit, fixed = cooked, it["unit"], False
+                raw, raw_unit, fixed = cooked, unit, False
             k = d["product"]
             a = agg.setdefault(k, {"product": prod["name"], "dish": it["name"],
-                                   "raw": 0, "cooked": 0, "unit": it["unit"],
+                                   "raw": 0, "cooked": 0, "unit": unit,
                                    "raw_unit": raw_unit, "fixed": False, "meals": []})
             a["raw"] += raw; a["cooked"] += cooked; a["meals"].append(it["meal"])
             a["fixed"] = a["fixed"] or fixed

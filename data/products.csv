@@ -1,81 +1,81 @@
-id;name;shelf_days;freezable;category;pack;unit;url
-grechka;Гречка ядрица;365;0;Крупы и мука;800;г;
-dikiy_ris;Дикий рис;365;0;Крупы и мука;500;г;
-buryy_ris;Бурый рис;365;0;Крупы и мука;500;г;
-smes_risa;Смесь бурого и дикого риса;365;0;Крупы и мука;500;г;https://vkusvill.ru/search/?isComplete=0&type=products&q=дикий+рис
-bulgur;Булгур;365;0;Крупы и мука;500;г;
-kinoa;Киноа;365;0;Крупы и мука;500;г;
-grechnevye_spagetti;Гречневые спагетти (без глютена);365;0;Крупы и мука;350;г;
-lapsha_grech_ris;Лапша из гречневой и рисовой муки;365;0;Крупы и мука;300;г;https://vkusvill.ru/goods/lapsha-iz-grechnevoy-i-risovoy-muki-105157/
-funchoza;Фунчоза;365;0;Крупы и мука;200;г;
-ovsyanye_hlopya;Овсяные хлопья (без глютена);365;0;Крупы и мука;400;г;https://vkusvill.ru/goods/khlopya-ovsyanye-iz-golozernogo-ovsa-bez-glyutena-34756/
-ris_kruglyy;Рис круглозёрный для каши;365;0;Крупы и мука;800;г;
-risovaya_muka;Рисовая мука;365;0;Крупы и мука;500;г;
-mannaya_krupa;Манная крупа;365;0;Крупы и мука;700;г;
-vermishel_bezglyut;Вермишель безглютеновая;365;0;Крупы и мука;300;г;https://www.ozon.ru/product/makarony-bez-glyutena-s-amarantovoy-mukoy-vermishel-esh-zdorovo-250g-3663936191/
-kakao;Какао-порошок;365;0;Бакалея;100;г;https://www.ozon.ru/product/kakao-poroshok-a-p-selivanov-100-naturalnyy-respublika-ekvador-bez-sahara-100-g-563918470/
-keshyu;Кешью;180;0;Бакалея;;г;
-kuraga;Курага;180;0;Бакалея;;г;
-shipovnik;Шиповник сушёный;365;0;Бакалея;;г;
-urbech;Урбеч из расторопши;180;0;Бакалея;225;г;https://www.ozon.ru/product/urbech-iz-rastoropshi-bez-sahara-pasta-iz-rastoropshi-1952561704/
-kletchatka;Сухая клетчатка;180;0;Бакалея;;г;https://www.ozon.ru/product/kletchatka-sibirskaya-kletchatka-vitaminnaya-polyana-280g-1018433538/
-kisel_zheludochnyy;Желудочный кисель (сухая смесь);180;0;Бакалея;;г;https://www.ozon.ru/product/kisel-zheludochnyy-leovit-naturalnyy-rastvorimyy-napitok-bystrogo-prigotovleniya-dlya-zhkt-190807954/
-kukuruznyy_krahmal;Кукурузный крахмал;365;0;Бакалея;200;г;
-razryhlitel;Разрыхлитель;365;0;Бакалея;10;г;
-vanilnyy_sahar;Ванильный сахар;365;0;Бакалея;10;г;
-olivkovoe_maslo;Оливковое масло;365;0;Бакалея;500;мл;
-humus;Хумус марокканский;14;0;Бакалея;200;г;https://vkusvill.ru/goods/khumus-marokkanskiy-s-vyalenymi-tomatami-76892/
-mindalnoe_moloko;Миндальное молоко;90;0;Молочное и заменители;1000;мл;
-velle_kokosovyy;Velle кокосовый;7;0;Молочное и заменители;250;г;
-velle_pitevoy;Питьевой кокосовый йогурт «Velle»;7;0;Молочное и заменители;230;г;
-bioyogurt_koziy;Биойогурт из козьего молока;7;0;Молочное и заменители;;г;https://vkusvill.ru/goods/bioyogurt-iz-kozego-moloka-yabloko-karamel-97291/
-syr_koziy;Творожный козий сыр;7;0;Молочное и заменители;150;г;https://vkusvill.ru/goods/syr-tvorozhnyy-koziy-25168/
-syr_adygeyskiy;Сыр «Адыгейский» козий;7;0;Молочное и заменители;;г;https://vkusvill.ru/goods/syr-koziy-adygeyskiy-43314/
-tofu;Тофу;14;0;Молочное и заменители;300;г;
-kurinoe_file;Куриное филе;2;1;Мясо и птица;;г;https://vkusvill.ru/goods/kurinoe-file-gril-122839/
-kotlety_indeyki;Котлеты из индейки (полуфабрикат);2;1;Мясо и птица;;г;https://vkusvill.ru/goods/kotlety-iz-indeyki-dieticheskie-38076/
-kotlety_krolika;Котлеты из кролика (полуфабрикат);2;1;Мясо и птица;;г;
-kotleta_govyadiny;Котлета из говядины «стейкбургер»;2;1;Мясо и птица;;г;
-baranina;Баранина (корейка или вырезка);2;1;Мясо и птица;;г;
-vetchina_indeyki;Ветчина из индейки;7;0;Мясо и птица;;г;
-file_lososya;Филе лосося охлаждённое;2;1;Рыба и морепродукты;;г;
-losos;Лосось (стейк);2;1;Рыба и морепродукты;;г;
-hek;Хек;2;1;Рыба и морепродукты;;г;
-tunec_steyk;Стейк тунца;2;1;Рыба и морепродукты;;г;
-tunec_konserv;Тунец консервированный;365;0;Рыба и морепродукты;120;г;https://vkusvill.ru/goods/tunets-polosatyy-vkusnye-konservy-kusochki-nat-pauch-123833/
-grebeshki;Гребешки;2;1;Рыба и морепродукты;;г;
-krevetki;Креветки белоногие «королевские»;2;1;Рыба и морепродукты;;г;
-kotlety_schuki;Котлеты из щуки (полуфабрикат);2;1;Рыба и морепродукты;;г;
-semga_slabosol;Слабосолёная сёмга;5;0;Рыба и морепродукты;;г;
-ogurcy;Огурцы;5;0;Овощи и зелень;;г;
-pomidory_cherri;Помидоры черри;7;0;Овощи и зелень;;г;
-tomaty_rozovye;Розовые томаты («бычье сердце»);5;0;Овощи и зелень;;г;
-morkov;Морковь;21;0;Овощи и зелень;;г;
-kartofel;Картофель;30;0;Овощи и зелень;;г;
-svekla;Свёкла;21;0;Овощи и зелень;;г;
-tykva;Тыква;14;0;Овощи и зелень;;г;
-kabachki;Кабачки;10;0;Овощи и зелень;;г;
-batat;Батат;14;0;Овощи и зелень;;г;
-listya_salata;Листья салата и зелень;4;0;Овощи и зелень;;г;
-banan;Бананы;4;0;Фрукты и ягоды;;г;
-golubika;Голубика;3;0;Фрукты и ягоды;;г;
-yagody;Свежие ягоды;3;0;Фрукты и ягоды;;г;
-persik;Персик;4;0;Фрукты и ягоды;;г;
-persik_ili_nektarin;Персик или нектарин;4;0;Фрукты и ягоды;;г;
-mango;Манго;4;0;Фрукты и ягоды;;г;
-avokado;Авокадо;5;0;Фрукты и ягоды;;г;
-finiki;Финики «меджул»;90;0;Фрукты и ягоды;;шт;
-hlebcy;Хлебцы из зелёной гречки;90;0;Хлеб и снеки;;шт;https://vkusvill.ru/goods/khlebtsy-iz-zelenoy-grechki-s-zelenyu-i-semechkami-tykvy-98236/
-tartin;Тартин;5;0;Хлеб и снеки;;г;https://vkusvill.ru/goods/tartin-pshenichno-rzhanoy-32931/
-tost;Хлеб для тостов (без глютена);7;0;Хлеб и снеки;;г;
-onigiri;Онигири с тунцом;2;0;Хлеб и снеки;;г;
-brusketa;Брускета с вялеными томатами;2;0;Хлеб и снеки;;шт;https://vkusvill.ru/goods/brusketta-iz-vyalenykh-tomatov-s-keshyu-38367/
-chipsy;Чипсы;90;0;Хлеб и снеки;60;г;https://vkusvill.ru/goods/chipsy-s-gimalayskoy-solyu-60653/
-marmelad;Мармелад;90;0;Хлеб и снеки;;шт;https://vkusvill.ru/goods/marmelad-kosichki-sestrichki-iz-yablok-110249/
-pechene_vitlen;Печенье «Vitlen»;90;0;Хлеб и снеки;;шт;https://idietum.ru/product/pechene-vitlen-s-grechnevoj-mukoj-i-shokoladom-na-maltite-bezglyut-200gr/
-pechene_mariya;Сухое печенье «Мария»;90;0;Хлеб и снеки;;шт;
-brauni;Брауни из зелёной гречки;5;0;Хлеб и снеки;;г;https://www.ozon.ru/product/brauni-iz-zelenoy-grechki-120-g-grechkabread-bez-glyutena-sahara-i-drozhzhey-vegan-1782390999/
-morkovnyy_keks;Морковный кекс с грецким орехом;5;0;Хлеб и снеки;;г;https://vkusvill.ru/goods/keks-morkovnyy-s-gretskim-orekhom-68131/
-perepelinye_yayca;Перепелиные яйца;21;0;Яйца;20;шт;
-kostnyy_bulon;Костный бульон;5;1;Прочее;;мл;
-borsch;Борщ с томлёной щекой (кулинария);3;1;Прочее;;мл;
+id;name;shelf_days;freezable;category;pack;unit;url;kcal;prot;fat;carb;unit_g
+grechka;Гречка ядрица;365;0;Крупы и мука;800;г;;313;12.6;3.3;62;1
+dikiy_ris;Дикий рис;365;0;Крупы и мука;500;г;;357;14.7;1.1;69;1
+buryy_ris;Бурый рис;365;0;Крупы и мука;500;г;;337;7.4;1.8;73;1
+smes_risa;Смесь бурого и дикого риса;365;0;Крупы и мука;500;г;https://vkusvill.ru/search/?isComplete=0&type=products&q=дикий+рис;345;10;1.5;72;1
+bulgur;Булгур;365;0;Крупы и мука;500;г;;342;12.3;1.3;64;1
+kinoa;Киноа;365;0;Крупы и мука;500;г;;368;14.1;6.1;57;1
+grechnevye_spagetti;Гречневые спагетти (без глютена);365;0;Крупы и мука;350;г;;348;13;2.5;70;1
+lapsha_grech_ris;Лапша из гречневой и рисовой муки;365;0;Крупы и мука;300;г;https://vkusvill.ru/goods/lapsha-iz-grechnevoy-i-risovoy-muki-105157/;350;9;1.5;75;1
+funchoza;Фунчоза;365;0;Крупы и мука;200;г;;351;0.3;0.1;86;1
+ovsyanye_hlopya;Овсяные хлопья (без глютена);365;0;Крупы и мука;400;г;https://vkusvill.ru/goods/khlopya-ovsyanye-iz-golozernogo-ovsa-bez-glyutena-34756/;366;12;6.2;61;1
+ris_kruglyy;Рис круглозёрный для каши;365;0;Крупы и мука;800;г;;344;7;1;78;1
+risovaya_muka;Рисовая мука;365;0;Крупы и мука;500;г;;366;6;1.4;80;1
+mannaya_krupa;Манная крупа;365;0;Крупы и мука;700;г;;328;10.3;1;68;1
+vermishel_bezglyut;Вермишель безглютеновая;365;0;Крупы и мука;300;г;https://www.ozon.ru/product/makarony-bez-glyutena-s-amarantovoy-mukoy-vermishel-esh-zdorovo-250g-3663936191/;350;8;1.5;76;1
+kakao;Какао-порошок;365;0;Бакалея;100;г;https://www.ozon.ru/product/kakao-poroshok-a-p-selivanov-100-naturalnyy-respublika-ekvador-bez-sahara-100-g-563918470/;289;24;15;10;1
+keshyu;Кешью;180;0;Бакалея;;г;;553;18;44;30;1
+kuraga;Курага;180;0;Бакалея;;г;;241;3.4;0.5;63;1
+shipovnik;Шиповник сушёный;365;0;Бакалея;;г;;284;3.4;1.4;48;1
+urbech;Урбеч из расторопши;180;0;Бакалея;225;г;https://www.ozon.ru/product/urbech-iz-rastoropshi-bez-sahara-pasta-iz-rastoropshi-1952561704/;520;22;40;15;1
+kletchatka;Сухая клетчатка;180;0;Бакалея;;г;https://www.ozon.ru/product/kletchatka-sibirskaya-kletchatka-vitaminnaya-polyana-280g-1018433538/;120;8;3;25;1
+kisel_zheludochnyy;Желудочный кисель (сухая смесь);180;0;Бакалея;;г;https://www.ozon.ru/product/kisel-zheludochnyy-leovit-naturalnyy-rastvorimyy-napitok-bystrogo-prigotovleniya-dlya-zhkt-190807954/;340;0.5;0;85;1
+kukuruznyy_krahmal;Кукурузный крахмал;365;0;Бакалея;200;г;;343;0.3;0;85;1
+razryhlitel;Разрыхлитель;365;0;Бакалея;10;г;;80;0;0;20;1
+vanilnyy_sahar;Ванильный сахар;365;0;Бакалея;10;г;;394;0;0;99;1
+olivkovoe_maslo;Оливковое масло;365;0;Бакалея;500;мл;;884;0;98;0;1
+humus;Хумус марокканский;14;0;Бакалея;200;г;https://vkusvill.ru/goods/khumus-marokkanskiy-s-vyalenymi-tomatami-76892/;260;7.5;20;13;1
+mindalnoe_moloko;Миндальное молоко;90;0;Молочное и заменители;1000;мл;;24;0.5;1.1;3;1
+velle_kokosovyy;Velle кокосовый;7;0;Молочное и заменители;250;г;;70;1;3.5;8;1
+velle_pitevoy;Питьевой кокосовый йогурт «Velle»;7;0;Молочное и заменители;230;г;;55;1;2.7;6.5;1
+bioyogurt_koziy;Биойогурт из козьего молока;7;0;Молочное и заменители;;г;https://vkusvill.ru/goods/bioyogurt-iz-kozego-moloka-yabloko-karamel-97291/;70;3;3.5;6;1
+syr_koziy;Творожный козий сыр;7;0;Молочное и заменители;150;г;https://vkusvill.ru/goods/syr-tvorozhnyy-koziy-25168/;260;7;24;3;1
+syr_adygeyskiy;Сыр «Адыгейский» козий;7;0;Молочное и заменители;;г;https://vkusvill.ru/goods/syr-koziy-adygeyskiy-43314/;240;17;18;1.5;1
+tofu;Тофу;14;0;Молочное и заменители;300;г;;76;8;4.8;2;1
+kurinoe_file;Куриное филе;2;1;Мясо и птица;;г;https://vkusvill.ru/goods/kurinoe-file-gril-122839/;110;23;1.2;0;1
+kotlety_indeyki;Котлеты из индейки (полуфабрикат);2;1;Мясо и птица;;г;https://vkusvill.ru/goods/kotlety-iz-indeyki-dieticheskie-38076/;140;16;8;2;1
+kotlety_krolika;Котлеты из кролика (полуфабрикат);2;1;Мясо и птица;;г;;150;15;9;3;1
+kotleta_govyadiny;Котлета из говядины «стейкбургер»;2;1;Мясо и птица;;г;;220;17;16;1;1
+baranina;Баранина (корейка или вырезка);2;1;Мясо и птица;;г;;255;16;21;0;1
+vetchina_indeyki;Ветчина из индейки;7;0;Мясо и птица;;г;;100;17;3;1;1
+file_lososya;Филе лосося охлаждённое;2;1;Рыба и морепродукты;;г;;208;20;13;0;1
+losos;Лосось (стейк);2;1;Рыба и морепродукты;;г;;208;20;13;0;1
+hek;Хек;2;1;Рыба и морепродукты;;г;;86;17;2.2;0;1
+tunec_steyk;Стейк тунца;2;1;Рыба и морепродукты;;г;;108;24;1;0;1
+tunec_konserv;Тунец консервированный;365;0;Рыба и морепродукты;120;г;https://vkusvill.ru/goods/tunets-polosatyy-vkusnye-konservy-kusochki-nat-pauch-123833/;100;21;1.5;0;1
+grebeshki;Гребешки;2;1;Рыба и морепродукты;;г;;88;17;1;3;1
+krevetki;Креветки белоногие «королевские»;2;1;Рыба и морепродукты;;г;;87;18;1.2;0.8;1
+kotlety_schuki;Котлеты из щуки (полуфабрикат);2;1;Рыба и морепродукты;;г;;130;15;6;4;1
+semga_slabosol;Слабосолёная сёмга;5;0;Рыба и морепродукты;;г;;200;21;13;0;1
+ogurcy;Огурцы;5;0;Овощи и зелень;;г;;14;0.8;0.1;2.5;1
+pomidory_cherri;Помидоры черри;7;0;Овощи и зелень;;г;;20;1;0.2;3.5;1
+tomaty_rozovye;Розовые томаты («бычье сердце»);5;0;Овощи и зелень;;г;;20;1;0.2;3.8;1
+morkov;Морковь;21;0;Овощи и зелень;;г;;35;1.3;0.1;7;1
+kartofel;Картофель;30;0;Овощи и зелень;;г;;77;2;0.4;16;1
+svekla;Свёкла;21;0;Овощи и зелень;;г;;43;1.5;0.1;9;1
+tykva;Тыква;14;0;Овощи и зелень;;г;;26;1;0.1;6;1
+kabachki;Кабачки;10;0;Овощи и зелень;;г;;24;0.6;0.3;4.6;1
+batat;Батат;14;0;Овощи и зелень;;г;;86;1.6;0.1;20;1
+listya_salata;Листья салата и зелень;4;0;Овощи и зелень;;г;;17;1.5;0.2;2.3;1
+banan;Бананы;4;0;Фрукты и ягоды;;г;;89;1.5;0.3;21;120
+golubika;Голубика;3;0;Фрукты и ягоды;;г;;44;1;0.5;8;1
+yagody;Свежие ягоды;3;0;Фрукты и ягоды;;г;;45;1;0.4;9;1
+persik;Персик;4;0;Фрукты и ягоды;;г;;45;0.9;0.1;10;150
+persik_ili_nektarin;Персик или нектарин;4;0;Фрукты и ягоды;;г;;46;1;0.2;10;150
+mango;Манго;4;0;Фрукты и ягоды;;г;;60;0.8;0.4;14;1
+avokado;Авокадо;5;0;Фрукты и ягоды;;г;;160;2;15;9;1
+finiki;Финики «меджул»;90;0;Фрукты и ягоды;;шт;;277;1.8;0.2;69;24
+hlebcy;Хлебцы из зелёной гречки;90;0;Хлеб и снеки;;шт;https://vkusvill.ru/goods/khlebtsy-iz-zelenoy-grechki-s-zelenyu-i-semechkami-tykvy-98236/;330;12;3;62;10
+tartin;Тартин;5;0;Хлеб и снеки;;г;https://vkusvill.ru/goods/tartin-pshenichno-rzhanoy-32931/;250;8;2;48;35
+tost;Хлеб для тостов (без глютена);7;0;Хлеб и снеки;;г;;240;4;3;48;25
+onigiri;Онигири с тунцом;2;0;Хлеб и снеки;;г;;170;6;3;30;110
+brusketa;Брускета с вялеными томатами;2;0;Хлеб и снеки;;шт;https://vkusvill.ru/goods/brusketta-iz-vyalenykh-tomatov-s-keshyu-38367/;250;6;18;14;25
+chipsy;Чипсы;90;0;Хлеб и снеки;60;г;https://vkusvill.ru/goods/chipsy-s-gimalayskoy-solyu-60653/;520;6;33;50;1
+marmelad;Мармелад;90;0;Хлеб и снеки;;шт;https://vkusvill.ru/goods/marmelad-kosichki-sestrichki-iz-yablok-110249/;320;0.1;0;80;10
+pechene_vitlen;Печенье «Vitlen»;90;0;Хлеб и снеки;;шт;https://idietum.ru/product/pechene-vitlen-s-grechnevoj-mukoj-i-shokoladom-na-maltite-bezglyut-200gr/;430;8;18;58;12
+pechene_mariya;Сухое печенье «Мария»;90;0;Хлеб и снеки;;шт;;400;8;9;70;7
+brauni;Брауни из зелёной гречки;5;0;Хлеб и снеки;;г;https://www.ozon.ru/product/brauni-iz-zelenoy-grechki-120-g-grechkabread-bez-glyutena-sahara-i-drozhzhey-vegan-1782390999/;350;9;15;45;40
+morkovnyy_keks;Морковный кекс с грецким орехом;5;0;Хлеб и снеки;;г;https://vkusvill.ru/goods/keks-morkovnyy-s-gretskim-orekhom-68131/;380;5;20;45;60
+perepelinye_yayca;Перепелиные яйца;21;0;Яйца;20;шт;;168;12;13;0.6;12
+kostnyy_bulon;Костный бульон;5;1;Прочее;;мл;;30;5;1;0.5;1
+borsch;Борщ с томлёной щекой (кулинария);3;1;Прочее;;мл;;60;3;3;5;1

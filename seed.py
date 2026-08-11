@@ -29,11 +29,13 @@ con.execute("DELETE FROM products")
 
 rows = read_csv("data/products.csv")
 con.executemany(
-    "INSERT INTO products(id,name,shelf_days,freezable,category,pack,unit,url)"
-    " VALUES(?,?,?,?,?,?,?,?)",
+    "INSERT INTO products(id,name,shelf_days,freezable,category,pack,unit,url,"
+    "kcal,prot,fat,carb,unit_g) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
     [(r["id"].strip(), r["name"].strip(), int(num(r["shelf_days"]) or 14),
       int(num(r["freezable"]) or 0), r["category"], num(r["pack"]),
-      (r["unit"] or "г").strip(), (r["url"] or "").strip() or None)
+      (r["unit"] or "г").strip(), (r["url"] or "").strip() or None,
+      num(r.get("kcal")), num(r.get("prot")), num(r.get("fat")), num(r.get("carb")),
+      num(r.get("unit_g")) or 1)
      for r in rows if (r.get("id") or "").strip()])
 print(f"товаров: {len(rows)}")
 

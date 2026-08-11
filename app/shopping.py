@@ -2,12 +2,19 @@
 from app.db import connect
 from app.cooking import _resolve
 
-def build(plan_id: int, day_from=0, day_to=6, persons=1, split_after=2):
-    """split_after — последний день первой закупки (0=Пн, 2=Ср)."""
+def build(plan_id: int, day_from=0, day_to=6, persons=1, split_after=2, items=None):
+    """split_after — последний день первой закупки (0=Пн, 2=Ср).
+    items — позиции всех дней с учётом замен (иначе берутся из плана как есть)."""
     con = connect()
-    rows = con.execute(
-        "SELECT day_index, name, COALESCE(qty_max,qty_min) q, unit FROM plan_items"
-        " WHERE plan_id=? AND day_index BETWEEN ? AND ?", (plan_id, day_from, day_to)).fetchall()
+    if items is None:
+        rows = con.execute(
+            "SELECT day_index, name, COALESCE(qty_max,qty_min) q, unit FROM plan_items"
+            " WHERE plan_id=? AND day_index BETWEEN ? AND ?",
+            (plan_id, day_from, day_to)).fetchall()
+    else:
+        rows = [{"day_index": i["day_index"], "name": i["name"], "unit": i["unit"],
+                 "q": i["qty_max"] if i["qty_max"] is not None else i["qty_min"]}
+                for i in items if day_from <= i["day_index"] <= day_to]
     agg = {}
     for r in rows:
         for d in _resolve(con, r["name"]):
@@ -15,6 +22,9 @@ def build(plan_id: int, day_from=0, day_to=6, persons=1, split_after=2):
             prod = con.execute("SELECT * FROM products WHERE id=?", (d["product"],)).fetchone()
             if not prod: continue
             cooked = (r["q"] or 0) * persons
+            # план считает штуками, а продукт в граммах (тартин, онигири) — переводим
+            if (r["unit"] or "") == "шт" and (prod["unit"] or "") != "шт":
+                cooked *= prod["unit_g"] or 1
             raw = d["amount"] * persons if d["amount"] else (cooked / d["coef"] if d["coef"] else cooked)
             a = agg.setdefault(prod["id"], {
                 "id": prod["id"], "name": prod["name"], "category": prod["category"],

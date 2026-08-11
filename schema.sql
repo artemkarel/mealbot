@@ -2,7 +2,9 @@ PRAGMA journal_mode=WAL;
 
 CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, shelf_days INT DEFAULT 14,
-  freezable INT DEFAULT 0, category TEXT, pack REAL, unit TEXT DEFAULT 'г', url TEXT);
+  freezable INT DEFAULT 0, category TEXT, pack REAL, unit TEXT DEFAULT 'г', url TEXT,
+  kcal REAL, prot REAL, fat REAL, carb REAL,       -- КБЖУ на 100 г/мл сырого продукта
+  unit_g REAL DEFAULT 1);                          -- граммов в 1 штуке (для unit='шт')
 
 CREATE TABLE IF NOT EXISTS dishes (
   id INTEGER PRIMARY KEY, dish TEXT NOT NULL, type TEXT,
@@ -58,3 +60,8 @@ CREATE TABLE IF NOT EXISTS user_recipes (
 CREATE TABLE IF NOT EXISTS user_places (            -- «где купить» поверх products.url
   user_id INT, product TEXT, place TEXT,
   PRIMARY KEY (user_id, product));
+
+CREATE TABLE IF NOT EXISTS meal_overrides (         -- «не хочу это» — замена приёма пищи
+  user_id INT, plan_id INT, day_index INT, meal TEXT,
+  items_json TEXT, created_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (user_id, plan_id, day_index, meal));

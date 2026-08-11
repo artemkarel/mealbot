@@ -4,8 +4,10 @@ import os, json, random
 from datetime import date
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
-from app.db import connect, init, current_plan, persons_of, set_current_plan, set_persons
+from app.db import (connect, init, current_plan, persons_of, set_current_plan,
+                    set_persons, day_items)
 from app.cooking import cook_plan, same_days
+from app.macros import day_macros
 from app.shopping import build as build_shopping
 from app import auth
 
@@ -34,8 +36,7 @@ def active_plan(con, uid: int):
 def today(day: int = 0, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
     con = connect(); plan = active_plan(con, uid)
-    items = con.execute("SELECT * FROM plan_items WHERE plan_id=? AND day_index=?"
-                        " ORDER BY meal_index, id", (plan["id"], day)).fetchall()
+    items = day_items(con, uid, plan["id"], day)   # с учётом замен приёмов
     recipes = {r["dish"]: {"title": r["title"],
                            "ingredients": json.loads(r["ingredients_json"] or "[]"),
                            "steps": json.loads(r["steps_json"] or "[]")}
@@ -46,7 +47,8 @@ def today(day: int = 0, x_init_data: str = Header(None)):
     meals: dict = {}
     for r in items:
         m = meals.setdefault(r["meal"], {"meal": r["meal"], "optional": r["optional"],
-                                         "note": r["note"], "items": []})
+                                         "note": r["note"], "swapped": 0, "items": []})
+        m["swapped"] = m["swapped"] or (1 if r.get("swapped") else 0)
         m["items"].append({"name": r["name"], "qty_min": r["qty_min"],
                            "qty_max": r["qty_max"], "unit": r["unit"], "url": r["url"],
                            "recipe": recipes.get(r["name"])})
@@ -58,6 +60,7 @@ def today(day: int = 0, x_init_data: str = Header(None)):
     return {"plan": plan["title"], "persons": persons_of(con, uid), "day": day,
             "day_name": items[0]["day_name"] if items else None,
             "meals": list(meals.values()), "logs": logs, "prep": prep,
+            "macros": day_macros(con, items),
             "same_as": same_days(plan["id"]).get(day, [])}
 
 @app.get("/api/cook")
@@ -66,13 +69,15 @@ def cook(day: int = 0, days: int = 1, x_init_data: str = Header(None)):
     con = connect(); plan = active_plan(con, uid)
     persons = persons_of(con, uid)
     return {"days": days, "persons": persons,
-            "list": cook_plan(plan["id"], day, days, persons)}
+            "list": cook_plan(plan["id"], day, days, persons,
+                              items=day_items(con, uid, plan["id"], day))}
 
 @app.get("/api/shopping")
 def shopping(x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
     con = connect(); plan = active_plan(con, uid)
-    res = build_shopping(plan["id"], persons=persons_of(con, uid))
+    week = [it for d in range(7) for it in day_items(con, uid, plan["id"], d)]
+    res = build_shopping(plan["id"], persons=persons_of(con, uid), items=week)
     # место покупки: правка пользователя поверх ссылки из файла диетолога
     places = {r["product"]: r["place"] for r in con.execute(
         "SELECT product, place FROM user_places WHERE user_id=?", (uid,))}
@@ -169,7 +174,7 @@ def plan_delete(id: int, x_init_data: str = Header(None)):
         raise HTTPException(404, "это не твой план")
     if r["user_id"] is None and uid not in ADMINS:
         raise HTTPException(403, "общий план может удалить только админ")
-    for t in ("plan_items", "recipes", "prep_tasks", "meal_logs"):
+    for t in ("plan_items", "recipes", "prep_tasks", "meal_logs", "meal_overrides"):
         con.execute(f"DELETE FROM {t} WHERE plan_id=?", (id,))
     con.execute("DELETE FROM plans WHERE id=?", (id,))
     con.execute("UPDATE user_prefs SET current_plan_id=NULL WHERE current_plan_id=?", (id,))
@@ -250,6 +255,74 @@ def plan_save_generated(payload: dict, x_init_data: str = Header(None)):
                      str(it.get("unit") or "")[:10] or None))
     con.commit()
     return {"ok": True, "plan_id": pid, "title": title}
+
+# ---------- «не хочу это» — замена приёма пищи ----------
+# Приём заменяется целиком на такой же приём из другого дня/плана,
+# чтобы состав и граммовки диетолога не перемешивались.
+
+def _meal_pool(con, uid: int, meal: str):
+    """Все варианты приёма из доступных планов, дедуп по составу."""
+    pool: dict = {}
+    for p in con.execute("SELECT id FROM plans WHERE user_id=? OR user_id IS NULL", (uid,)):
+        groups: dict = {}
+        for r in con.execute(
+                "SELECT day_index, name, qty_min, qty_max, unit FROM plan_items"
+                " WHERE plan_id=? AND meal=? ORDER BY day_index, meal_index, id",
+                (p["id"], meal)):
+            groups.setdefault(r["day_index"], []).append(r)
+        for items in groups.values():
+            sig = tuple(i["name"] for i in items)
+            pool.setdefault(sig, [{"name": i["name"], "qty_min": i["qty_min"],
+                                   "qty_max": i["qty_max"], "unit": i["unit"]}
+                                  for i in items])
+    return pool
+
+@app.get("/api/swap/options")
+def swap_options(day: int, meal: str, x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    if meal not in MEALS: raise HTTPException(400, "неизвестный приём пищи")
+    con = connect(); plan = active_plan(con, uid)
+    cur_sig = tuple(r["name"] for r in day_items(con, uid, plan["id"], day)
+                    if r["meal"] == meal)
+    variants = [{"items": v} for s, v in _meal_pool(con, uid, meal).items() if s != cur_sig]
+    random.shuffle(variants)
+    swapped = bool(con.execute(
+        "SELECT 1 FROM meal_overrides WHERE user_id=? AND plan_id=? AND day_index=? AND meal=?",
+        (uid, plan["id"], day, meal)).fetchone())
+    return {"variants": variants[:3], "swapped": swapped}
+
+@app.post("/api/swap")
+def swap_apply(payload: dict, x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    day = int(payload.get("day", -1)); meal = payload.get("meal")
+    if not (0 <= day <= 6): raise HTTPException(400, "неверный день")
+    if meal not in MEALS: raise HTTPException(400, "неизвестный приём пищи")
+    def num(v):
+        try: return float(v)
+        except (TypeError, ValueError): return None
+    items = [{"name": str(it.get("name") or "").strip()[:120],
+              "qty_min": num(it.get("qty_min")), "qty_max": num(it.get("qty_max")),
+              "unit": (str(it.get("unit") or "").strip()[:10] or None)}
+             for it in (payload.get("items") or [])[:15]]
+    items = [it for it in items if it["name"]]
+    if not items: raise HTTPException(400, "пустая замена")
+    con = connect(); plan = active_plan(con, uid)
+    con.execute("INSERT INTO meal_overrides(user_id,plan_id,day_index,meal,items_json)"
+                " VALUES(?,?,?,?,?)"
+                " ON CONFLICT(user_id,plan_id,day_index,meal)"
+                " DO UPDATE SET items_json=excluded.items_json,"
+                " created_at=datetime('now')",
+                (uid, plan["id"], day, meal, json.dumps(items, ensure_ascii=False)))
+    con.commit(); return {"ok": True}
+
+@app.post("/api/swap/revert")
+def swap_revert(day: int, meal: str, x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect(); plan = active_plan(con, uid)
+    con.execute("DELETE FROM meal_overrides"
+                " WHERE user_id=? AND plan_id=? AND day_index=? AND meal=?",
+                (uid, plan["id"], day, meal))
+    con.commit(); return {"ok": True}
 
 # ---------- напоминания ----------
 
