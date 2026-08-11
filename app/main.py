@@ -210,11 +210,21 @@ def recipes_list(x_init_data: str = Header(None)):
     rows = con.execute("SELECT * FROM user_recipes WHERE user_id=? ORDER BY id DESC",
                        (uid,)).fetchall()
     plan = current_plan(con, uid)
-    dishes = [r["name"] for r in con.execute(
-        "SELECT DISTINCT name FROM plan_items WHERE plan_id=? ORDER BY name",
-        (plan["id"],))] if plan else []
+    dishes, plan_recipes, seen = [], [], set()
+    if plan:
+        dishes = [r["name"] for r in con.execute(
+            "SELECT DISTINCT name FROM plan_items WHERE plan_id=? ORDER BY name",
+            (plan["id"],))]
+        # рецепты из файла диетолога (в таблице бывают дубли — по одному на приём)
+        for r in con.execute("SELECT * FROM recipes WHERE plan_id=?", (plan["id"],)):
+            key = (r["dish"], r["title"])
+            if key in seen: continue
+            seen.add(key)
+            plan_recipes.append({"dish": r["dish"], "title": r["title"],
+                                 "ingredients": json.loads(r["ingredients_json"] or "[]"),
+                                 "steps": json.loads(r["steps_json"] or "[]")})
     return {"recipes": [{**_user_recipe(r), "id": r["id"], "dish": r["dish"]} for r in rows],
-            "dishes": dishes}
+            "plan_recipes": plan_recipes, "dishes": dishes}
 
 @app.post("/api/recipes/add")
 def recipe_add(payload: dict, x_init_data: str = Header(None)):

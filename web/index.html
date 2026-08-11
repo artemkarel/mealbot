@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <title>План питания</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
@@ -145,12 +145,16 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .timer{display:inline-block;margin-top:8px;font-size:12.5px;color:var(--accent);border:1px solid #CADCD0;
   background:var(--accent-bg);border-radius:20px;padding:3px 10px;cursor:pointer}
 
-.tabs{display:flex;background:var(--card);border-top:1px solid var(--line);padding:6px 0 8px;
-  position:fixed;bottom:0;left:50%;transform:translateX(-50%);width:100%;max-width:400px;z-index:20}
-.tabs button{flex:1;border:0;background:none;padding:4px 0;cursor:pointer;font-family:inherit;
-  font-size:10.5px;color:var(--ink3);display:flex;flex-direction:column;align-items:center;gap:3px}
-.tabs button .i{font-size:19px;line-height:1}
+.tabs{display:flex;background:var(--card);border-top:1px solid var(--line);
+  padding:6px 0 calc(8px + env(safe-area-inset-bottom));
+  position:fixed;bottom:0;left:0;right:0;margin:0 auto;max-width:400px;z-index:20}
+.tabs button{flex:1;min-width:0;border:0;background:none;padding:4px 0;cursor:pointer;font-family:inherit;
+  font-size:9.5px;color:var(--ink3);display:flex;flex-direction:column;align-items:center;gap:2px;
+  white-space:nowrap;overflow:hidden}
+.tabs button .i{font-size:17px;line-height:1}
 .tabs button.on{color:var(--accent);font-weight:600}
+.add-toggle{width:100%;justify-content:center;border:0;padding:12px;font-size:13.5px;color:var(--accent)}
+.tag.rcp{background:var(--accent-bg);color:var(--accent);cursor:pointer;border:0;font-family:inherit}
 .frm{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .frm select,.frm input,.frm textarea{border:1px solid var(--line);border-radius:9px;padding:8px 10px;
   font:inherit;font-size:14px;background:#fff;color:var(--ink);width:100%;-webkit-appearance:none;resize:vertical}
@@ -227,18 +231,23 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
   <!-- ===== РЕЦЕПТЫ ===== -->
   <div class="scr" id="s-recipes">
     <div class="card" id="recList"><div class="empty">Загрузка…</div></div>
-    <div class="sect">Новый рецепт</div>
-    <div class="card"><div class="frm">
-      <input id="rcTitle" placeholder="Название — например, Вафли без глютена">
-      <input id="rcDish" list="dishNames" placeholder="К какому блюду прикрепить">
-      <datalist id="dishNames"></datalist>
-      <textarea id="rcIng" rows="4" placeholder="Ингредиенты — по одному на строку:&#10;Рисовая мука — 300 г&#10;Миндальное молоко — 400 мл"></textarea>
-      <textarea id="rcSteps" rows="4" placeholder="Шаги — по одному на строку"></textarea>
-      <button class="btn pri" onclick="addRecipe()">Сохранить рецепт</button>
-    </div></div>
-    <div class="note blue"><span class="ic">📖</span>
-      <div>Рецепт прикрепляется к блюду по названию — рядом с этим блюдом на «Сегодня»
-        появится ссылка. Свой рецепт заменяет рецепт из файла плана.</div></div>
+    <div class="card"><button class="btn gh add-toggle" id="rcAddBtn"
+      onclick="toggleAdd('rcFormWrap','rcAddBtn','+ Добавить рецепт')">+ Добавить рецепт</button></div>
+    <div id="rcFormWrap" style="display:none">
+      <div class="card"><div class="frm">
+        <input id="rcTitle" placeholder="Название — например, Вафли без глютена">
+        <select id="rcDish" onchange="document.getElementById('rcDishCustom').style.display=this.value==='__other'?'':'none'">
+          <option value="" disabled selected>К какому блюду прикрепить</option>
+        </select>
+        <input id="rcDishCustom" placeholder="Название блюда" style="display:none">
+        <textarea id="rcIng" rows="4" placeholder="Ингредиенты — по одному на строку:&#10;Рисовая мука — 300 г&#10;Миндальное молоко — 400 мл"></textarea>
+        <textarea id="rcSteps" rows="4" placeholder="Шаги — по одному на строку"></textarea>
+        <button class="btn pri" onclick="addRecipe()">Сохранить рецепт</button>
+      </div></div>
+      <div class="note blue"><span class="ic">📖</span>
+        <div>Рецепт прикрепляется к блюду — рядом с ним на «Сегодня» появится ссылка.
+          Свой рецепт заменяет рецепт из файла плана.</div></div>
+    </div>
   </div>
 
   <!-- ===== ПРОФИЛЬ ===== -->
@@ -252,42 +261,50 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 
     <div class="sect">Напоминания</div>
     <div class="card" id="remList"><div class="empty">Загрузка…</div></div>
-    <div class="card"><div class="frm">
-      <select id="remKind" onchange="document.getElementById('remMeal').style.display=this.value==='meal'?'':'none'">
-        <option value="meal">О приёме пищи</option>
-        <option value="shopping">О закупке</option>
-        <option value="morning">Что взять с собой (утро)</option>
-        <option value="evening">Подготовка на завтра (вечер)</option>
-      </select>
-      <select id="remMeal">
-        <option>Завтрак</option><option>Обед</option><option>Полдник</option>
-        <option>Ужин</option><option>Второй ужин</option>
-      </select>
-      <div class="row2">
-        <input type="time" id="remTime" value="09:00">
-        <button class="btn pri" onclick="addReminder()">Добавить</button>
-      </div>
-    </div></div>
-
-    <div class="sect">БАДы и добавки</div>
-    <div class="card" id="supList"><div class="empty">Загрузка…</div></div>
-    <div class="card"><div class="frm">
-      <input id="supName" placeholder="Название — например, Омега-3">
-      <input id="supDose" placeholder="Дозировка — например, 1000 мг">
-      <div class="row2">
-        <select id="supMeal">
+    <div class="card"><button class="btn gh add-toggle" id="remAddBtn"
+      onclick="toggleAdd('remFormWrap','remAddBtn','+ Добавить напоминание')">+ Добавить напоминание</button></div>
+    <div id="remFormWrap" style="display:none">
+      <div class="card"><div class="frm">
+        <select id="remKind" onchange="document.getElementById('remMeal').style.display=this.value==='meal'?'':'none'">
+          <option value="meal">О приёме пищи</option>
+          <option value="shopping">О закупке</option>
+          <option value="morning">Что взять с собой (утро)</option>
+          <option value="evening">Подготовка на завтра (вечер)</option>
+        </select>
+        <select id="remMeal">
           <option>Завтрак</option><option>Обед</option><option>Полдник</option>
           <option>Ужин</option><option>Второй ужин</option>
         </select>
-        <select id="supTiming">
-          <option>до еды</option><option>во время еды</option><option>после еды</option>
-        </select>
-      </div>
-      <button class="btn pri" onclick="addSup()">Добавить</button>
-    </div></div>
-    <div class="note blue"><span class="ic">💊</span>
-      <div>Добавки показываются в «Сегодня» внутри своего приёма пищи, а напоминания
-        о приёме включают их автоматически.</div></div>
+        <div class="row2">
+          <input type="time" id="remTime" value="09:00">
+          <button class="btn pri" onclick="addReminder()">Добавить</button>
+        </div>
+      </div></div>
+    </div>
+
+    <div class="sect">БАДы и добавки</div>
+    <div class="card" id="supList"><div class="empty">Загрузка…</div></div>
+    <div class="card"><button class="btn gh add-toggle" id="supAddBtn"
+      onclick="toggleAdd('supFormWrap','supAddBtn','+ Добавить БАД')">+ Добавить БАД</button></div>
+    <div id="supFormWrap" style="display:none">
+      <div class="card"><div class="frm">
+        <input id="supName" placeholder="Название — например, Омега-3">
+        <input id="supDose" placeholder="Дозировка — например, 1000 мг">
+        <div class="row2">
+          <select id="supMeal">
+            <option>Завтрак</option><option>Обед</option><option>Полдник</option>
+            <option>Ужин</option><option>Второй ужин</option>
+          </select>
+          <select id="supTiming">
+            <option>до еды</option><option>во время еды</option><option>после еды</option>
+          </select>
+        </div>
+        <button class="btn pri" onclick="addSup()">Добавить</button>
+      </div></div>
+      <div class="note blue"><span class="ic">💊</span>
+        <div>Добавки показываются в «Сегодня» внутри своего приёма пищи, а напоминания
+          о приёме включают их автоматически.</div></div>
+    </div>
   </div>
 
   <div class="tabs" id="tabbar">
@@ -446,8 +463,7 @@ async function renderToday() {
       let recLink = '';
       if (it.recipe) {
         const ri = recipeReg.push(it.recipe) - 1;
-        recLink = ` <span class="link" style="font-size:12px;white-space:nowrap"
-          onclick="openRec(${ri}, '${esc(it.name)}')">рецепт</span>`;
+        recLink = ` <button class="tag rcp" onclick="openRec(${ri}, '${esc(it.name)}')">рецепт</button>`;
       }
       return `<div class="row"><span class="n">${
         it.url ? `<a class="link" href="${esc(it.url)}" target="_blank">${esc(it.name)}</a>` : esc(it.name)
@@ -651,6 +667,18 @@ async function savePlace(id) {
   toast(val ? 'Место покупки сохранено' : 'Сброшено к ссылке из плана');
 }
 
+/* ---------- сворачиваемые формы добавления ---------- */
+function toggleAdd(wrapId, btnId, label) {
+  const el = document.getElementById(wrapId), btn = document.getElementById(btnId);
+  const open = el.style.display === 'none';
+  el.style.display = open ? '' : 'none';
+  btn.textContent = open ? 'Скрыть' : label;
+}
+function closeAdd(wrapId, btnId, label) {
+  document.getElementById(wrapId).style.display = 'none';
+  document.getElementById(btnId).textContent = label;
+}
+
 /* ---------- рецепты ---------- */
 async function renderRecipes() {
   let r;
@@ -658,30 +686,49 @@ async function renderRecipes() {
     document.getElementById('recList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
     return;
   }
-  document.getElementById('dishNames').innerHTML =
-    r.dishes.map(d => `<option value="${esc(d)}">`).join('');
+  const sel = document.getElementById('rcDish');
+  const cur = sel.value;
+  sel.innerHTML = '<option value="" disabled selected>К какому блюду прикрепить</option>'
+    + r.dishes.map(d => `<option value="${esc(d)}">${esc(d)}</option>`).join('')
+    + '<option value="__other">Другое блюдо…</option>';
+  if (cur) sel.value = cur;
   recipeReg = recipeReg || [];
-  document.getElementById('recList').innerHTML = r.recipes.map(x => {
+  const mineRows = r.recipes.map(x => {
     const ri = recipeReg.push(x) - 1;
     return `<div class="chk" style="cursor:default">
       <span class="lbl"><span class="link" onclick="openRec(${ri})">${esc(x.title)}</span>
         <span class="meta">для блюда: ${esc(x.dish)}</span></span>
       <button class="btn" style="padding:4px 9px;font-size:12px;color:var(--red)" onclick="delRecipe(${x.id})">Удалить</button>
     </div>`;
-  }).join('') || '<div class="empty">Своих рецептов пока нет — добавь первый ниже.</div>';
+  }).join('');
+  const planRows = r.plan_recipes.map(x => {
+    const ri = recipeReg.push(x) - 1;
+    return `<div class="chk" style="cursor:default">
+      <span class="lbl"><span class="link" onclick="openRec(${ri})">${esc(x.title)}</span>
+        <span class="meta">из файла плана · ${esc(x.dish)}</span></span>
+    </div>`;
+  }).join('');
+  document.getElementById('recList').innerHTML =
+    (mineRows ? `<div class="grp">Мои рецепты</div>` + mineRows : '') +
+    (planRows ? `<div class="grp">Из плана диетолога</div>` + planRows : '') ||
+    '<div class="empty">Рецептов пока нет — добавь первый ниже.</div>';
 }
 async function addRecipe() {
   const title = document.getElementById('rcTitle').value.trim(),
-        dish = document.getElementById('rcDish').value.trim(),
+        selVal = document.getElementById('rcDish').value,
+        dish = selVal === '__other' ? document.getElementById('rcDishCustom').value.trim() : selVal,
         ingredients = document.getElementById('rcIng').value.split('\n').map(s => s.trim()).filter(Boolean),
         steps = document.getElementById('rcSteps').value.split('\n').map(s => s.trim()).filter(Boolean);
   if (!title) return toast('Впиши название рецепта');
-  if (!dish) return toast('Укажи блюдо, к которому прикрепить');
+  if (!dish) return toast('Выбери блюдо, к которому прикрепить');
   try {
     await api('/api/recipes/add', {method: 'POST', headers: {'Content-Type': 'application/json'},
                                    body: JSON.stringify({title, dish, ingredients, steps})});
   } catch (e) { return toast(e.message); }
-  ['rcTitle', 'rcDish', 'rcIng', 'rcSteps'].forEach(id => document.getElementById(id).value = '');
+  ['rcTitle', 'rcDishCustom', 'rcIng', 'rcSteps'].forEach(id => document.getElementById(id).value = '');
+  document.getElementById('rcDish').selectedIndex = 0;
+  document.getElementById('rcDishCustom').style.display = 'none';
+  closeAdd('rcFormWrap', 'rcAddBtn', '+ Добавить рецепт');
   dayCache = {}; renderRecipes(); toast('Рецепт сохранён и прикреплён');
 }
 function delRecipe(id) {
@@ -761,6 +808,7 @@ async function addReminder() {
     await api(`/api/reminders/add?kind=${kind}&time=${encodeURIComponent(time)}`
               + (kind === 'meal' ? `&meal=${encodeURIComponent(meal)}` : ''), {method: 'POST'});
   } catch (e) { return toast(e.message); }
+  closeAdd('remFormWrap', 'remAddBtn', '+ Добавить напоминание');
   renderMe(); toast('Напоминание добавлено');
 }
 async function delReminder(id) {
@@ -779,6 +827,7 @@ async function addSup() {
   } catch (e) { return toast(e.message); }
   document.getElementById('supName').value = '';
   document.getElementById('supDose').value = '';
+  closeAdd('supFormWrap', 'supAddBtn', '+ Добавить БАД');
   supData = null; renderMe(); toast('Добавка сохранена');
 }
 async function delSup(id) {
