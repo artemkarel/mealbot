@@ -1,14 +1,17 @@
 """Бот: принимает пересланный файл плана, шлёт напоминания, открывает мини-приложение."""
-import asyncio, os, sys, tempfile
+import asyncio, os, shutil, subprocess, sys, tempfile
 from datetime import date, datetime, timedelta
 from pathlib import Path
 sys.path.insert(0, str(Path(__file__).parent.parent))
 from aiogram import Bot, Dispatcher, F
-from aiogram.filters import CommandStart
-from aiogram.types import Message, WebAppInfo, InlineKeyboardMarkup, InlineKeyboardButton
+from aiogram.filters import Command, CommandStart
+from aiogram.types import (Message, WebAppInfo, InlineKeyboardMarkup,
+                           InlineKeyboardButton, BotCommand)
 from import_plan import save
 from app.db import connect
 from app.cooking import same_days
+
+ROOT = Path(__file__).parent.parent
 
 TOKEN = os.environ["BOT_TOKEN"]
 URL = os.environ["WEBAPP_URL"]
@@ -45,6 +48,109 @@ async def got_file(m: Message):
         except Exception as e:
             return await m.answer(f"Не смог разобрать: {e}")
     await m.answer(f"План загружен (#{plan_id}).", reply_markup=kb)
+
+
+# ---------- команды ----------
+
+DAY_FULL = ["Понедельник", "Вторник", "Среда", "Четверг", "Пятница", "Суббота", "Воскресенье"]
+
+
+def day_menu_text(offset: int) -> str:
+    """Меню на сегодня (offset=0) или завтра (offset=1) одним сообщением."""
+    con = connect()
+    plan = _active_plan(con)
+    if not plan:
+        return "План не загружен — пришли файл от диетолога."
+    day = (date.today() + timedelta(days=offset)).weekday()
+    rows = con.execute(
+        "SELECT meal, name, COALESCE(qty_max,qty_min) q, unit FROM plan_items"
+        " WHERE plan_id=? AND day_index=? ORDER BY meal_index, id",
+        (plan["id"], day)).fetchall()
+    if not rows:
+        return "На этот день в плане ничего нет."
+    lines, cur = [f"🍽 {DAY_FULL[day]}"], None
+    for r in rows:
+        if r["meal"] != cur:
+            cur = r["meal"]
+            lines.append(f"\n{cur}:")
+        q = f' — {r["q"]:g} {r["unit"]}' if r["q"] else ""
+        lines.append(f"  • {r['name']}{q}")
+    return "\n".join(lines)
+
+
+async def cmd_today(m: Message):
+    if not allowed(m): return
+    await m.answer(day_menu_text(0), reply_markup=kb)
+
+
+async def cmd_tomorrow(m: Message):
+    if not allowed(m): return
+    await m.answer(day_menu_text(1), reply_markup=kb)
+
+
+async def cmd_myid(m: Message):
+    # без проверки allowed: команда и нужна, чтобы узнать свой ID для белого списка
+    await m.answer(f"Твой Telegram ID: {m.from_user.id}")
+
+
+async def cmd_status(m: Message):
+    if not allowed(m): return
+    con = connect()
+    plan = _active_plan(con)
+    if plan:
+        n = con.execute("SELECT COUNT(*) c FROM plan_items WHERE plan_id=?",
+                        (plan["id"],)).fetchone()["c"]
+        head = (f"План: {plan['title']}\nПозиций: {n}, человек: {plan['persons']}, "
+                f"загружен {plan['created_at'][:10]}")
+    else:
+        head = "План не загружен."
+    fridge = con.execute("SELECT COUNT(*) c FROM purchases WHERE used=0").fetchone()["c"]
+    await m.answer(f"{head}\nВ холодильнике на учёте: {fridge}\n"
+                   f"Напоминания: утром {MORNING}, вечером {EVENING}", reply_markup=kb)
+
+
+async def cmd_version(m: Message):
+    if not allowed(m): return
+    try:
+        v = subprocess.run(["git", "-C", str(ROOT), "log", "-1",
+                            "--format=%h · %ad · %s", "--date=format:%d.%m.%Y %H:%M"],
+                           capture_output=True, text=True, timeout=10).stdout.strip()
+    except Exception as e:
+        v = f"не удалось узнать: {e}"
+    await m.answer(f"Версия кода: {v or 'git недоступен'}")
+
+
+def _run_detached(args):
+    """Запуск через systemd-run: переживает перезапуск самого бота."""
+    if shutil.which("systemd-run"):
+        subprocess.Popen(["systemd-run", "--collect"] + args)
+    else:  # локальная разработка без systemd
+        subprocess.Popen(args)
+
+
+async def cmd_update(m: Message):
+    if not allowed(m): return
+    await m.answer("Обновляюсь с GitHub… Сервисы перезапустятся, "
+                   "через минуту проверь /version.")
+    _run_detached([str(ROOT / "update.sh")])
+
+
+async def cmd_restart(m: Message):
+    if not allowed(m): return
+    await m.answer("Перезапускаю бота и веб…")
+    _run_detached(["systemctl", "restart", "mealplan-bot", "mealplan-web"])
+
+
+BOT_COMMANDS = [
+    BotCommand(command="start", description="Открыть меню"),
+    BotCommand(command="today", description="Что сегодня едим"),
+    BotCommand(command="tomorrow", description="Что завтра"),
+    BotCommand(command="myid", description="Мой Telegram ID"),
+    BotCommand(command="status", description="Состояние бота"),
+    BotCommand(command="version", description="Версия кода"),
+    BotCommand(command="update", description="Обновить с GitHub"),
+    BotCommand(command="restart", description="Перезапустить бота"),
+]
 
 
 # ---------- напоминания ----------
@@ -152,7 +258,15 @@ async def main():
     # на Python 3.9 иначе падает asyncio.Lock внутри aiogram
     dp = Dispatcher()
     dp.message.register(start, CommandStart())
+    dp.message.register(cmd_today, Command("today"))
+    dp.message.register(cmd_tomorrow, Command("tomorrow"))
+    dp.message.register(cmd_myid, Command("myid"))
+    dp.message.register(cmd_status, Command("status"))
+    dp.message.register(cmd_version, Command("version"))
+    dp.message.register(cmd_update, Command("update"))
+    dp.message.register(cmd_restart, Command("restart"))
     dp.message.register(got_file, F.document)
+    await bot.set_my_commands(BOT_COMMANDS)   # заменяет список команд старого бота
     asyncio.create_task(reminder_loop())
     await dp.start_polling(bot)
 
