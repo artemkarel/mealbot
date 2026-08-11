@@ -188,17 +188,16 @@ journalctl -u mealplan-web -n 50
 journalctl -u mealplan-bot -n 50
 ```
 
-В nginx маршрут на порт 8080 (обычно он уже так и настроен от старого приложения):
+HTTPS на сервере делает Caddy. Весь трафик идёт на порт 8080:
 
 ```
-location / {
-    proxy_pass http://127.0.0.1:8080;
-    proxy_set_header Host $host;
+zdorovaedabot.duckdns.org {
+    reverse_proxy 127.0.0.1:8080
 }
 ```
 
 ```bash
-sudo nginx -t && sudo systemctl reload nginx
+sudo caddy validate --config /etc/caddy/Caddyfile && sudo systemctl reload caddy
 ```
 
 ---
