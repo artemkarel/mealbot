@@ -11,6 +11,8 @@ from app import auth
 init()
 app = FastAPI(title="Meal plan")
 DEV = os.getenv("DEV", "0") == "1"
+ADMINS = {int(x) for x in os.getenv("ADMIN_USER_IDS", "").replace(" ", "").split(",") if x}
+if DEV: ADMINS.add(0)
 
 def me(x_init_data: str | None):
     if DEV: return {"id": 0, "first_name": "dev"}
@@ -80,34 +82,76 @@ def persons(n: int, x_init_data: str = Header(None)):
     con.execute("UPDATE plans SET persons=? WHERE id=?", (max(1, min(8, n)), plan["id"]))
     con.commit(); return {"persons": n}
 
-# ---------- мои планы ----------
+# ---------- мои и общие планы ----------
+# user_id IS NULL — общий план: виден всем, «Открыть» делает личную копию,
+# удалить оригинал может только админ.
+
+def _clone_plan(con, src, uid: int) -> int:
+    cur = con.execute(
+        "INSERT INTO plans(title,date_from,date_to,source_file,raw_json,active,persons,user_id)"
+        " VALUES(?,?,?,?,?,0,1,?)",
+        (src["title"], src["date_from"], src["date_to"], src["source_file"],
+         src["raw_json"], uid))
+    nid = cur.lastrowid
+    con.execute(
+        "INSERT INTO plan_items(plan_id,day_index,day_name,meal,meal_index,optional,"
+        "name,qty_min,qty_max,unit,raw_line,note,url)"
+        " SELECT ?,day_index,day_name,meal,meal_index,optional,"
+        "name,qty_min,qty_max,unit,raw_line,note,url FROM plan_items WHERE plan_id=?",
+        (nid, src["id"]))
+    con.execute("INSERT INTO recipes(plan_id,dish,title,ingredients_json,steps_json)"
+                " SELECT ?,dish,title,ingredients_json,steps_json FROM recipes WHERE plan_id=?",
+                (nid, src["id"]))
+    con.execute("INSERT INTO prep_tasks(plan_id,day_index,meal,text,done)"
+                " SELECT ?,day_index,meal,text,0 FROM prep_tasks WHERE plan_id=?",
+                (nid, src["id"]))
+    return nid
 
 @app.get("/api/plans")
 def plans_list(x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
     con = connect()
     rows = con.execute(
-        "SELECT id, title, created_at, active, persons,"
+        "SELECT id, title, created_at, active, persons, user_id,"
         " (SELECT COUNT(DISTINCT day_index) FROM plan_items WHERE plan_id=plans.id) days"
-        " FROM plans WHERE user_id=? ORDER BY id DESC", (uid,)).fetchall()
-    return {"plans": [dict(r) for r in rows]}
+        " FROM plans WHERE user_id=? OR user_id IS NULL"
+        " ORDER BY user_id IS NULL, id DESC", (uid,)).fetchall()
+    plans = []
+    for r in rows:
+        d = dict(r)
+        d["shared"] = r["user_id"] is None
+        d["can_delete"] = not d["shared"] or uid in ADMINS
+        del d["user_id"]
+        plans.append(d)
+    return {"plans": plans}
 
 @app.post("/api/plans/activate")
 def plan_activate(id: int, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
     con = connect()
-    r = con.execute("SELECT id FROM plans WHERE id=? AND user_id=?", (id, uid)).fetchone()
+    r = con.execute("SELECT * FROM plans WHERE id=? AND (user_id=? OR user_id IS NULL)",
+                    (id, uid)).fetchone()
     if not r: raise HTTPException(404, "это не твой план")
+    if r["user_id"] is None:
+        # общий: не активируем оригинал, а даём пользователю его копию
+        own = con.execute("SELECT id FROM plans WHERE user_id=? AND title=?",
+                          (uid, r["title"])).fetchone()
+        target = own["id"] if own else _clone_plan(con, r, uid)
+    else:
+        target = id
     con.execute("UPDATE plans SET active=0 WHERE user_id=?", (uid,))
-    con.execute("UPDATE plans SET active=1 WHERE id=?", (id,))
-    con.commit(); return {"ok": True}
+    con.execute("UPDATE plans SET active=1 WHERE id=?", (target,))
+    con.commit(); return {"ok": True, "plan_id": target}
 
 @app.post("/api/plans/delete")
 def plan_delete(id: int, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
     con = connect()
-    r = con.execute("SELECT id FROM plans WHERE id=? AND user_id=?", (id, uid)).fetchone()
-    if not r: raise HTTPException(404, "это не твой план")
+    r = con.execute("SELECT user_id FROM plans WHERE id=?", (id,)).fetchone()
+    if not r or (r["user_id"] is not None and r["user_id"] != uid):
+        raise HTTPException(404, "это не твой план")
+    if r["user_id"] is None and uid not in ADMINS:
+        raise HTTPException(403, "общий план может удалить только админ")
     for t in ("plan_items", "recipes", "prep_tasks", "meal_logs"):
         con.execute(f"DELETE FROM {t} WHERE plan_id=?", (id,))
     con.execute("DELETE FROM plans WHERE id=?", (id,))
