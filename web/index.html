@@ -146,7 +146,7 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
   background:var(--accent-bg);border-radius:20px;padding:3px 10px;cursor:pointer}
 
 .tabs{display:flex;background:var(--card);border-top:1px solid var(--line);
-  padding:6px 0 calc(8px + env(safe-area-inset-bottom));
+  padding:6px 0 max(6px, calc(env(safe-area-inset-bottom, 0px) / 2));
   position:fixed;bottom:0;left:0;right:0;margin:0 auto;max-width:400px;z-index:20}
 .tabs button{flex:1;min-width:0;border:0;background:none;padding:5px 0 4px;cursor:pointer;font-family:inherit;
   font-size:10px;color:var(--ink3);display:flex;flex-direction:column;align-items:center;gap:3px;
