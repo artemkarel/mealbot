@@ -128,6 +128,37 @@ def persons(n: int, x_init_data: str = Header(None)):
     set_persons(con, uid, max(1, min(8, n)))
     con.commit(); return {"persons": n}
 
+# ---------- о себе: пол/рост/вес и здоровье ----------
+# Данные видны только владельцу и используются только ИИ-диетологом.
+
+@app.get("/api/profile")
+def profile_get(x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect()
+    r = con.execute("SELECT sex, height, weight, health FROM user_prefs WHERE user_id=?",
+                    (uid,)).fetchone()
+    return {"sex": r["sex"] if r else None, "height": r["height"] if r else None,
+            "weight": r["weight"] if r else None, "health": r["health"] if r else None}
+
+@app.post("/api/profile")
+def profile_set(payload: dict, x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    def num(v, lo, hi):
+        try: v = float(v)
+        except (TypeError, ValueError): return None
+        return v if lo <= v <= hi else None
+    sex = payload.get("sex")
+    sex = sex if sex in ("м", "ж") else None
+    height = num(payload.get("height"), 100, 250)
+    weight = num(payload.get("weight"), 30, 300)
+    health = str(payload.get("health") or "").strip()[:2000] or None
+    con = connect()
+    con.execute("INSERT INTO user_prefs(user_id, sex, height, weight, health) VALUES(?,?,?,?,?)"
+                " ON CONFLICT(user_id) DO UPDATE SET sex=excluded.sex, height=excluded.height,"
+                " weight=excluded.weight, health=excluded.health",
+                (uid, sex, height, weight, health))
+    con.commit(); return {"ok": True}
+
 @app.post("/api/tz")
 def set_tz(tz: str = "", x_init_data: str = Header(None)):
     """Часовой пояс телефона — приложение шлёт его при каждом открытии.

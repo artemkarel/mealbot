@@ -23,6 +23,9 @@ AI_SYSTEM = (
     "делу, без markdown-разметки, опираясь на научный консенсус. Если вопрос касается "
     "плана — используй данные ниже; замены предлагай в духе плана: та же структура "
     "приёма, похожий состав, объём и КБЖУ, без глютена.\n"
+    "Если указаны пол, рост, вес и особенности здоровья — обязательно учитывай их "
+    "в расчётах (нормы калорий, БЖУ, вода) и советах. При аллергиях и "
+    "непереносимостях никогда не предлагай такие продукты и предупреждай о них.\n"
     "Ты не врач: не ставь диагнозы и не назначай лечение или дозировки лекарств. При "
     "симптомах болезни, тревожных признаках или вопросах о серьёзных состояниях "
     "советуй обратиться к врачу или своему диетологу. Если данных не хватает — "
@@ -56,13 +59,35 @@ def split_recipe(answer):
     return text, None
 
 
+def _about_user(con, uid):
+    """Пол/рост/вес и особенности здоровья — если пользователь их указал."""
+    r = con.execute("SELECT sex, height, weight, health FROM user_prefs WHERE user_id=?",
+                    (uid,)).fetchone()
+    if not r:
+        return None
+    bits = []
+    if r["sex"]: bits.append("пол: " + ("мужской" if r["sex"] == "м" else "женский"))
+    if r["height"]: bits.append("рост: {:g} см".format(r["height"]))
+    if r["weight"]: bits.append("вес: {:g} кг".format(r["weight"]))
+    parts = []
+    if bits:
+        parts.append("О пользователе: " + ", ".join(bits) + ".")
+    if r["health"]:
+        parts.append("Особенности здоровья, болезни и аллергии (учитывай обязательно): "
+                     + r["health"])
+    return "\n".join(parts) or None
+
+
 def ai_context(uid):
     """План пользователя одним текстом — контекст для Claude."""
     con = connect()
+    about = _about_user(con, uid)
     plan = current_plan(con, uid)
     if not plan:
-        return "У пользователя пока нет загруженного плана питания."
+        return about or "У пользователя пока нет загруженного плана питания."
     parts = ["План: {}, человек: {}.".format(plan["title"], persons_of(con, uid))]
+    if about:
+        parts.append(about)
     week = {}
     for d in range(7):
         week[d] = day_items(con, uid, plan["id"], d)

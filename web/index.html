@@ -9,6 +9,7 @@
   --amber:#A9700B; --amber-bg:#FBF1DE; --red:#A93B2C; --red-bg:#FAEAE7;
   --blue:#2C6187; --blue-bg:#E6EEF5; --r:14px;
   --safe-b:max(6px, calc(env(safe-area-inset-bottom, 0px) / 1.6));
+  --line:#E8EBE6;
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
@@ -29,7 +30,7 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .back.on{display:block}
 .hdr h1{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em;flex:1}
 .hdr .sub{color:var(--ink2);font-size:13px;margin-top:2px}
-.days{display:flex;gap:6px;margin-top:12px;overflow-x:auto;scrollbar-width:none}
+.days{display:flex;gap:6px;margin-top:12px;overflow-x:auto;scrollbar-width:none;justify-content:center}
 .days::-webkit-scrollbar{display:none}
 .day{flex:0 0 auto;width:42px;text-align:center;padding:6px 0;border-radius:10px;border:1px solid var(--line);
   background:#fff;cursor:pointer;font-size:11px;color:var(--ink2)}
@@ -39,18 +40,23 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 
 .scr{display:none;padding:12px 12px 84px;flex:1}   /* снизу место под фиксированное меню */
 .scr.on{display:block}
-.sect{font-size:12px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3);margin:18px 4px 8px}
-.sect:first-child{margin-top:4px}
-.card{background:var(--card);border-radius:var(--r);margin-bottom:10px;overflow:hidden}
+.scr.in-r{animation:inR .22s ease}
+.scr.in-l{animation:inL .22s ease}
+@keyframes inR{from{opacity:0;transform:translateX(16px)}to{opacity:1;transform:none}}
+@keyframes inL{from{opacity:0;transform:translateX(-16px)}to{opacity:1;transform:none}}
+.sect{font-size:11px;font-weight:600;letter-spacing:.08em;text-transform:uppercase;color:var(--ink3);margin:22px 4px 10px}
+.sect:first-child{margin-top:6px}
+.card{background:var(--card);border-radius:var(--r);margin-bottom:12px;overflow:hidden;
+  box-shadow:0 1px 2px rgba(22,25,26,.03)}
 
-.meal-h{display:flex;align-items:center;gap:9px;padding:12px 14px 8px}
+.meal-h{display:flex;align-items:center;gap:8px;padding:13px 16px 8px}
 .meal-h .t{font-weight:600;font-size:15px;flex:1}
 .meal-h .time{font-size:12px;color:var(--ink3)}
 .tag{font-size:10px;font-weight:600;letter-spacing:.04em;text-transform:uppercase;padding:3px 6px;border-radius:5px;
   background:var(--accent-bg);color:var(--accent)}
 .tag.opt{background:#F1F1EE;color:var(--ink2)}
-.rows{padding:0 14px}
-.row{display:flex;align-items:baseline;gap:8px;padding:5px 0;border-bottom:1px solid #F3F5F2;font-size:14px}
+.rows{padding:0 16px}
+.row{display:flex;align-items:baseline;gap:8px;padding:7px 0;border-bottom:1px solid #F6F8F4;font-size:14px}
 .row:last-child{border-bottom:0}
 .row .n{flex:1}
 .row .q{color:var(--ink2);font-size:13px;white-space:nowrap}
@@ -78,7 +84,7 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .note-acts .btn{padding:5px 10px;font-size:12.5px;background:rgba(255,255,255,.8)}
 .note-acts .btn.pri{background:var(--accent);color:#fff}
 
-.chk{display:flex;align-items:flex-start;gap:10px;padding:10px 14px;border-bottom:1px solid #F3F5F2;cursor:pointer;font-size:14px}
+.chk{display:flex;align-items:flex-start;gap:10px;padding:12px 16px;border-bottom:1px solid #F6F8F4;cursor:pointer;font-size:14px}
 .chk:last-child{border-bottom:0}
 .box{flex:0 0 auto;width:19px;height:19px;border:1.5px solid #C3CAC4;border-radius:6px;margin-top:1px;
   display:flex;align-items:center;justify-content:center;font-size:12px;color:#fff}
@@ -98,7 +104,7 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .seg button{flex:1;border:0;background:transparent;padding:7px 4px;border-radius:8px;font-size:13px;
   color:var(--ink2);cursor:pointer;font-family:inherit}
 .seg button.on{background:#fff;color:var(--ink);font-weight:600;box-shadow:0 1px 3px rgba(0,0,0,.07)}
-.grp{padding:9px 14px 4px;font-size:11px;font-weight:600;letter-spacing:.06em;text-transform:uppercase;color:var(--ink3)}
+.grp{padding:10px 16px 4px;font-size:10.5px;font-weight:600;letter-spacing:.07em;text-transform:uppercase;color:#AEB5AF}
 
 /* persons stepper */
 .pers{display:flex;align-items:center;gap:10px;background:#fff;border-radius:var(--r);padding:10px 12px;margin-bottom:10px}
@@ -160,11 +166,28 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
   white-space:nowrap;overflow:hidden}
 .tabs button .i{font-size:20px;line-height:1}
 .tabs button.on{color:var(--accent);font-weight:600}
+#tabInd{position:absolute;top:0;height:3px;background:var(--accent);border-radius:0 0 3px 3px;
+  transition:left .28s ease,width .28s ease;left:0;width:0}
+/* Диетолог — главная вкладка: кружок-акцент и точка «онлайн» */
+.tabs button.ai-tab{color:var(--accent)}
+.tabs button.ai-tab .i{width:30px;height:30px;background:var(--accent-bg);border-radius:50%;
+  display:flex;align-items:center;justify-content:center;font-size:16px;position:relative}
+.tabs button.ai-tab .i::after{content:'';position:absolute;right:-1px;top:-1px;width:9px;height:9px;
+  border-radius:50%;background:#43B97F;border:2px solid var(--card)}
 .add-toggle{width:100%;justify-content:center;border:0;padding:12px;font-size:13.5px;color:var(--accent)}
-.tag.rcp{background:var(--accent-bg);color:var(--accent);cursor:pointer;border:0;font-family:inherit}
-.swap-btn{flex:0 0 auto;width:28px;height:28px;border:0;border-radius:50%;background:var(--accent-bg);
-  color:var(--accent);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
-.swap-btn:active{background:#D3E4D9}
+.tag.rcp{background:none;color:var(--accent);opacity:.55;cursor:pointer;border:0;font-family:inherit;
+  padding:2px 3px;font-size:10px;font-weight:500;letter-spacing:.02em;text-transform:lowercase}
+.swap-btn{flex:0 0 auto;width:24px;height:24px;border:0;border-radius:50%;background:none;
+  color:#B8BFB9;cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.swap-btn:active{background:#EFF2EE;color:var(--ink2)}
+/* выбор варианта замены — радио-точки */
+.vopt{cursor:pointer;transition:box-shadow .15s}
+.vopt.sel{box-shadow:0 0 0 1.5px var(--accent)}
+.vdot{flex:0 0 auto;width:18px;height:18px;border:1.5px solid #C9D0CA;border-radius:50%;
+  margin-top:3px;position:relative;transition:border-color .15s}
+.vopt.sel .vdot{border-color:var(--accent)}
+.vopt.sel .vdot::after{content:'';position:absolute;inset:3px;border-radius:50%;background:var(--accent)}
+.btn.pri:disabled{opacity:.45}
 .frm{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .frm select,.frm input,.frm textarea{border:1px solid var(--line);border-radius:9px;padding:8px 10px;
   font:inherit;font-size:14px;background:#fff;color:var(--ink);width:100%;-webkit-appearance:none;resize:vertical}
@@ -215,14 +238,16 @@ body.tg{padding:0;background:var(--bg);
 .hint-chip{display:inline-block;background:#fff;border:1px solid var(--line);border-radius:16px;
   padding:7px 12px;font-size:13px;color:var(--ink);cursor:pointer;margin:3px 4px 3px 0}
 
-/* шторка замены приёма */
-.sheet-wrap{position:fixed;inset:0;z-index:40;display:none}
-.sheet-wrap.on{display:block}
+/* шторка замены приёма — плавно выезжает снизу */
+.sheet-wrap{position:fixed;inset:0;z-index:40;opacity:0;pointer-events:none;transition:opacity .22s}
+.sheet-wrap.on{opacity:1;pointer-events:auto}
 .sheet-bg{position:absolute;inset:0;background:rgba(20,25,22,.4)}
 .sheet{position:absolute;left:0;right:0;bottom:0;margin:0 auto;max-width:400px;background:var(--bg);
   border-radius:20px 20px 0 0;padding:16px 12px calc(14px + env(safe-area-inset-bottom,0px));
   max-height:76vh;overflow-y:auto;overscroll-behavior:contain;
-  box-shadow:0 -10px 40px rgba(0,0,0,.25)}
+  box-shadow:0 -10px 40px rgba(0,0,0,.25);
+  transform:translateY(102%);transition:transform .26s ease}
+.sheet-wrap.on .sheet{transform:none}
 </style>
 
 <div class="phone">
@@ -317,6 +342,26 @@ body.tg{padding:0;background:var(--bg);
     <div style="height:58px"></div>   <!-- место под поле ввода -->
   </div>
 
+  <!-- ===== О СЕБЕ (подэкран) ===== -->
+  <div class="scr" id="s-health">
+    <div class="card"><div class="frm">
+      <select id="hSex">
+        <option value="" disabled selected>Пол</option>
+        <option value="м">Мужской</option><option value="ж">Женский</option>
+      </select>
+      <div class="row2">
+        <input type="number" id="hHeight" placeholder="Рост, см" min="100" max="250">
+        <input type="number" id="hWeight" placeholder="Вес, кг" min="30" max="300">
+      </div>
+      <textarea id="hHealth" rows="4" placeholder="Болезни, аллергии, непереносимости — своими словами:&#10;например, непереносимость глютена, гастрит"></textarea>
+      <button class="btn pri" onclick="saveHealth()">Сохранить</button>
+    </div></div>
+    <div class="note blue"><span class="ic">🔒</span>
+      <div><b>Конфиденциально.</b> Эти данные хранятся только для твоего аккаунта и
+        используются только ИИ-диетологом в этом приложении. Другим пользователям
+        и куда-либо ещё они не передаются.</div></div>
+  </div>
+
   <!-- ===== ПРОФИЛЬ: хаб ===== -->
   <div class="scr" id="s-me">
     <div class="sect">Порции</div>
@@ -339,7 +384,7 @@ body.tg{padding:0;background:var(--bg);
       <div class="card"><div class="frm">
         <input type="file" id="impFile" accept=".pdf,.docx,.txt,.xlsx,.xlsm,.md,.csv,image/*">
         <textarea id="impText" rows="5" placeholder="…или вставь план текстом"></textarea>
-        <button class="btn pri" id="impGo" onclick="importPlan()">Распознать через ИИ и сохранить</button>
+        <button class="btn pri" id="impGo" onclick="importPlan()">Добавить</button>
         <div style="font-size:12px;color:var(--ink3)">Подойдёт PDF, Word, Excel или обычный текст.
           ИИ разложит документ по дням и приёмам, план появится в «Мои» и станет текущим.
           Обычно занимает до минуты.</div>
@@ -403,9 +448,10 @@ body.tg{padding:0;background:var(--bg);
   </div>
 
   <div class="tabs" id="tabbar">
+    <span id="tabInd"></span>
     <button class="on" onclick="go('today',this)"><span class="i">🍽</span>Сегодня</button>
     <button onclick="go('week',this)"><span class="i">🗓</span>Неделя</button>
-    <button onclick="go('ai',this)"><span class="i">💬</span>Диетолог</button>
+    <button class="ai-tab" onclick="go('ai',this)"><span class="i">💬</span>Диетолог</button>
     <button onclick="go('shop',this)"><span class="i">🧺</span>Закупки</button>
     <button onclick="go('me',this)"><span class="i">👤</span>Профиль</button>
   </div>
@@ -516,12 +562,27 @@ function titles() {
 }
 const RENDER = {today: renderToday, cook: renderCook, mode: renderMode, ai: renderAi,
                 week: renderWeek, shop: renderShop, me: renderMe, recipes: renderRecipes,
-                plans: renderPlans, rem: renderRem, sup: renderSup};
+                plans: renderPlans, rem: renderRem, sup: renderSup, health: renderHealth};
+const TAB_ORDER = ['today', 'week', 'ai', 'shop', 'me'];
+function moveTabInd(btn) {
+  const el = document.getElementById('tabInd');
+  if (!btn || !el) return;
+  el.style.left = (btn.offsetLeft + btn.offsetWidth * 0.3) + 'px';
+  el.style.width = (btn.offsetWidth * 0.4) + 'px';
+}
 function go(tab, btn) {
+  const from = TAB_ORDER.indexOf(nav.tab), to = TAB_ORDER.indexOf(tab);
   nav = {tab, stack: []};
+  if (!btn) btn = document.querySelectorAll('.tabs button')[to];
   [...document.querySelectorAll('.tabs button')].forEach(b => b.classList.remove('on'));
-  if (btn) btn.classList.add('on');
+  if (btn) { btn.classList.add('on'); moveTabInd(btn); }
   paint();
+  if (from >= 0 && to >= 0 && from !== to) {          // мягкая смена экранов
+    const scr = document.querySelector('.scr.on');
+    const cls = to > from ? 'in-r' : 'in-l';
+    scr.classList.add(cls);
+    setTimeout(() => scr.classList.remove(cls), 240);
+  }
 }
 function push(id, title, sub) { nav.stack.push({id, title, sub}); paint(); }
 function back() { nav.stack.pop(); paint(); }
@@ -654,24 +715,23 @@ async function renderToday() {
       let recLink = '';
       if (it.recipe) {
         const ri = recipeReg.push(it.recipe) - 1;
-        recLink = ` <button class="tag rcp" onclick="event.stopPropagation();openRec(${ri}, '${esc(it.name)}')">рецепт</button>`;
+        recLink = ` <button class="tag rcp" onclick="openRec(${ri}, '${esc(it.name)}')">рецепт</button>`;
       }
-      // тап по блюду — шторка «заменить приём»
-      return `<div class="row" style="cursor:pointer" onclick="openSwap('${esc(m.meal)}')">
-        <span class="n">${esc(it.name)}${recLink}</span>
+      return `<div class="row"><span class="n">${esc(it.name)}${recLink}</span>
         <span class="q num">${amt(it.qty_min, it.qty_max, it.unit)}</span></div>`;
     }).join('') + supsAfter;
     return `<div class="card">
-      <div class="meal-h"><span class="t">${esc(m.meal)}</span>
-        ${m.swapped ? '<span class="tag" style="background:var(--blue-bg);color:var(--blue)">заменено</span>' : ''}
-        ${m.optional ? '<span class="tag opt">по желанию</span>' : ''}
-        ${kcal ? `<span class="time num">≈${kcal} ккал</span>` : ''}
+      <div class="meal-h"><span class="t" style="flex:0 0 auto">${esc(m.meal)}</span>
         <button class="swap-btn" onclick="openSwap('${esc(m.meal)}')" title="Заменить приём">
-          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
-            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor"
+            stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
             <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
             <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
-          </svg></button></div>
+          </svg></button>
+        <span style="flex:1"></span>
+        ${m.swapped ? '<span class="tag" style="background:var(--blue-bg);color:var(--blue)">заменено</span>' : ''}
+        ${m.optional ? '<span class="tag opt">по желанию</span>' : ''}
+        ${kcal ? `<span class="time num">≈${kcal} ккал</span>` : ''}</div>
       <div class="rows" style="padding-bottom:10px">${rows}</div>
       ${m.note ? `<div style="padding:0 14px 12px;font-size:12.5px;color:var(--ink2)">${esc(m.note)}</div>` : ''}
     </div>`;
@@ -842,18 +902,20 @@ function clearAi() {
 }
 
 /* ---------- «не хочу это» — замена приёма ---------- */
-let swapMeal = null, swapVars = [];
+let swapMeal = null, swapVars = [], swapSel = null, swapWasSwapped = false;
 function showSheet(html) {
+  const wrap = document.getElementById('sheetWrap');
   document.getElementById('sheetBody').innerHTML = html;
-  document.getElementById('sheetWrap').classList.add('on');
-  document.body.style.overflow = 'hidden';        // фон не прокручивается под шторкой
+  requestAnimationFrame(() => wrap.classList.add('on'));   // плавный выезд снизу
+  setTimeout(() => wrap.classList.add('on'), 60);          // фолбэк для фоновой вкладки
+  document.body.style.overflow = 'hidden';                 // фон не прокручивается
 }
 function closeSheet() {
   document.getElementById('sheetWrap').classList.remove('on');
   document.body.style.overflow = '';
 }
 async function openSwap(meal) {
-  swapMeal = meal;
+  swapMeal = meal; swapSel = null;
   showSheet('<div class="empty">Подбираю варианты…</div>');
   let r;
   try { r = await api(`/api/swap/options?day=${day}&meal=${encodeURIComponent(meal)}`); }
@@ -861,26 +923,38 @@ async function openSwap(meal) {
     return showSheet(`<div class="empty">${esc(e.message)}</div>
       <div class="note-acts"><button class="btn" onclick="closeSheet()">Закрыть</button></div>`);
   }
-  swapVars = r.variants;
-  const cards = r.variants.map((v, i) =>
-    `<div class="card" style="cursor:pointer;margin-bottom:8px" onclick="applySwap(${i})">
-      <div class="rows" style="padding:7px 14px">${v.items.map(it =>
-        `<div class="row"><span class="n">${esc(it.name)}</span>
-         <span class="q num">${amt(it.qty_min, it.qty_max, it.unit)}</span></div>`).join('')}</div>
-    </div>`).join('');
-  showSheet(`<div style="font-weight:600;font-size:16px">Заменить «${esc(meal)}»?</div>
-    <div style="font-size:12.5px;color:var(--ink2);margin:3px 0 12px">Готовые приёмы из твоих планов —
-      состав и граммовки диетолога не перемешиваются. Тапни вариант, чтобы выбрать.</div>
+  swapVars = r.variants; swapWasSwapped = r.swapped;
+  renderSwapSheet();
+}
+function renderSwapSheet() {
+  const sh = document.querySelector('.sheet');
+  const st0 = sh ? sh.scrollTop : 0;
+  const cards = swapVars.map((v, i) =>
+    `<div class="card vopt ${i === swapSel ? 'sel' : ''}" style="margin-bottom:8px" onclick="selSwap(${i})">
+      <div style="display:flex;gap:11px;padding:10px 13px;align-items:flex-start">
+        <span class="vdot"></span>
+        <div style="flex:1">${v.items.map(it =>
+          `<div class="row"><span class="n">${esc(it.name)}</span>
+           <span class="q num">${amt(it.qty_min, it.qty_max, it.unit)}</span></div>`).join('')}</div>
+      </div></div>`).join('');
+  showSheet(`<div style="font-weight:600;font-size:16px">Заменить «${esc(swapMeal)}»?</div>
+    <div style="font-size:12.5px;color:var(--ink2);margin:3px 0 12px">Готовые приёмы из твоих
+      планов — отметь подходящий и нажми «Заменить».</div>
     ${cards || '<div class="empty">Других вариантов этого приёма в планах нет</div>'}
     <div class="note-acts" style="margin-top:10px">
-      ${r.variants.length ? `<button class="btn" onclick="openSwap(swapMeal)">🎲 Ещё варианты</button>` : ''}
-      ${r.swapped ? `<button class="btn" onclick="revertSwap()">↩ Вернуть из плана</button>` : ''}
+      ${swapVars.length ? `<button class="btn pri" ${swapSel == null ? 'disabled' : ''}
+          onclick="applySwap()">Заменить</button>
+        <button class="btn" onclick="openSwap(swapMeal)">🎲 Ещё</button>` : ''}
+      ${swapWasSwapped ? `<button class="btn" onclick="revertSwap()">↩ Вернуть из плана</button>` : ''}
       <button class="btn" onclick="closeSheet()">Отмена</button></div>`);
+  if (sh) sh.scrollTop = st0;
 }
-async function applySwap(i) {
+function selSwap(i) { swapSel = i; renderSwapSheet(); }
+async function applySwap() {
+  if (swapSel == null) return;
   try {
     await api('/api/swap', {method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({day, meal: swapMeal, items: swapVars[i].items})});
+      body: JSON.stringify({day, meal: swapMeal, items: swapVars[swapSel].items})});
   } catch (e) { return toast(e.message); }
   closeSheet(); resetCaches(); renderToday();
   toast('Приём заменён — закупки и готовка пересчитаны');
@@ -1216,7 +1290,7 @@ async function importPlan() {
   const text = document.getElementById('impText').value.trim();
   if (!f && !text) return toast('Выбери файл или вставь текст плана');
   const btn = document.getElementById('impGo');
-  btn.disabled = true; btn.textContent = 'Распознаю через ИИ…';
+  btn.disabled = true; btn.textContent = 'Добавляю…';
   try {
     const payload = f ? await planPayload(f) : {text};
     const r = await api('/api/plans/import', {method: 'POST',
@@ -1227,7 +1301,7 @@ async function importPlan() {
     resetCaches(); renderPlans();
     toast(`«${r.title}» добавлен (${r.days} дн.) и выбран текущим`);
   } catch (e) { toast(e.message); }
-  btn.disabled = false; btn.textContent = 'Распознать через ИИ и сохранить';
+  btn.disabled = false; btn.textContent = 'Добавить';
 }
 
 /* ---------- генерация меню ---------- */
@@ -1309,6 +1383,8 @@ async function renderMe() {
     row('💊', 'БАДы и добавки',
         supData.length ? `в списке: ${supData.length}` : 'пока не добавлены',
         `push('sup','БАДы и добавки','Покажутся в своём приёме пищи')`) +
+    row('🩺', 'О себе', 'пол, рост, вес и здоровье — для диетолога',
+        `push('health','О себе','Диетолог учитывает это в советах')`) +
     row('📖', 'Мои рецепты', 'свои рецепты для блюд плана',
         `push('recipes','Рецепты','Свои рецепты для блюд плана')`);
 }
@@ -1349,6 +1425,26 @@ async function renderRem() {
       <button class="btn" style="padding:4px 9px;font-size:12px;color:var(--red)" onclick="delReminder(${r.id})">Удалить</button>
     </div>`).join('') ||
     '<div class="empty">Напоминаний нет — добавь ниже, бот напишет в чат в это время.</div>';
+}
+
+async function renderHealth() {
+  let p;
+  try { p = await api('/api/profile'); } catch (e) { return toast(e.message); }
+  document.getElementById('hSex').value = p.sex || '';
+  document.getElementById('hHeight').value = p.height || '';
+  document.getElementById('hWeight').value = p.weight || '';
+  document.getElementById('hHealth').value = p.health || '';
+}
+async function saveHealth() {
+  const body = {sex: document.getElementById('hSex').value || null,
+                height: document.getElementById('hHeight').value || null,
+                weight: document.getElementById('hWeight').value || null,
+                health: document.getElementById('hHealth').value};
+  try {
+    await api('/api/profile', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify(body)});
+  } catch (e) { return toast(e.message); }
+  toast('Сохранено — диетолог теперь это учитывает');
 }
 
 async function renderSup() {
@@ -1435,6 +1531,7 @@ function sendTz() {
 }
 (async function init() {
   sendTz();
+  moveTabInd(document.querySelector('.tabs button.on'));
   try { await loadDay(day); } catch (e) { toast(e.message); }
   renderDays(); paint();
 })();

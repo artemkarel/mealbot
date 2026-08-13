@@ -42,7 +42,9 @@ CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT);
 
 CREATE TABLE IF NOT EXISTS user_prefs (
   user_id INTEGER PRIMARY KEY, current_plan_id INT, persons INT DEFAULT 1,
-  tz TEXT);                                                -- пояс телефона: IANA или "+03:00"
+  tz TEXT,                                                 -- пояс телефона: IANA или "+03:00"
+  sex TEXT, height REAL, weight REAL,                      -- для расчётов диетолога
+  health TEXT);                                            -- болезни/аллергии, видны только владельцу
 
 CREATE TABLE IF NOT EXISTS user_reminders (
   id INTEGER PRIMARY KEY, user_id INT, kind TEXT,          -- meal | shopping | morning | evening

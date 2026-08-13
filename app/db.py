@@ -18,8 +18,11 @@ def _migrate(con):
         if "user_id" not in cols:
             con.execute(f"ALTER TABLE {table} ADD COLUMN user_id INT")
     cols = [r[1] for r in con.execute("PRAGMA table_info(user_prefs)")]
-    if cols and "tz" not in cols:
-        con.execute("ALTER TABLE user_prefs ADD COLUMN tz TEXT")
+    if cols:
+        for c, t in (("tz", "TEXT"), ("sex", "TEXT"), ("height", "REAL"),
+                     ("weight", "REAL"), ("health", "TEXT")):
+            if c not in cols:
+                con.execute(f"ALTER TABLE user_prefs ADD COLUMN {c} {t}")
     cols = [r[1] for r in con.execute("PRAGMA table_info(products)")]
     for c in ("kcal", "prot", "fat", "carb", "unit_g"):
         if cols and c not in cols:
