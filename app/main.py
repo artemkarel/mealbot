@@ -43,10 +43,13 @@ def today(day: int = 0, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
     con = connect(); plan = active_plan(con, uid)
     items = day_items(con, uid, plan["id"], day)   # с учётом замен приёмов
+    # базовые рецепты (plan_id IS NULL) перекрываются рецептами конкретного плана
     recipes = {r["dish"]: {"title": r["title"],
                            "ingredients": json.loads(r["ingredients_json"] or "[]"),
                            "steps": json.loads(r["steps_json"] or "[]")}
-               for r in con.execute("SELECT * FROM recipes WHERE plan_id=?", (plan["id"],))}
+               for r in con.execute(
+                   "SELECT * FROM recipes WHERE plan_id IS NULL OR plan_id=?"
+                   " ORDER BY plan_id IS NOT NULL", (plan["id"],))}
     # свои рецепты пользователя перекрывают рецепты из файла плана
     for r in con.execute("SELECT * FROM user_recipes WHERE user_id=?", (uid,)):
         recipes[r["dish"]] = _user_recipe(r)
@@ -488,8 +491,9 @@ def recipes_list(x_init_data: str = Header(None)):
         dishes = [r["name"] for r in con.execute(
             "SELECT DISTINCT name FROM plan_items WHERE plan_id=? ORDER BY name",
             (plan["id"],))]
-        # рецепты из файла диетолога (в таблице бывают дубли — по одному на приём)
-        for r in con.execute("SELECT * FROM recipes WHERE plan_id=?", (plan["id"],)):
+        # рецепты из файла диетолога + базовые (plan_id IS NULL); дубли схлопываем
+        for r in con.execute("SELECT * FROM recipes WHERE plan_id=? OR plan_id IS NULL"
+                             " ORDER BY plan_id IS NULL", (plan["id"],)):
             key = (r["dish"], r["title"])
             if key in seen: continue
             seen.add(key)
