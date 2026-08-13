@@ -508,6 +508,25 @@ function go(tab, btn) {
 }
 function push(id, title, sub) { nav.stack.push({id, title, sub}); paint(); }
 function back() { nav.stack.pop(); paint(); }
+
+/* горизонтальный свайп — назад (жест как в самом телефоне); открытую шторку закрывает */
+function handleSwipe(dx, dy, dt) {
+  if (dt > 600 || Math.abs(dy) > 60 || Math.abs(dx) < 70 ||
+      Math.abs(dx) < Math.abs(dy) * 1.5) return;
+  if (document.getElementById('sheetWrap').classList.contains('on')) return closeSheet();
+  if (nav.stack.length) back();
+}
+let swS = null;
+document.addEventListener('touchstart', e => {
+  swS = e.touches.length === 1
+    ? {x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now()} : null;
+}, {passive: true});
+document.addEventListener('touchend', e => {
+  if (!swS) return;
+  const t = e.changedTouches[0];
+  handleSwipe(t.clientX - swS.x, t.clientY - swS.y, Date.now() - swS.t);
+  swS = null;
+}, {passive: true});
 function paint() {
   const cur = nav.stack.length ? nav.stack[nav.stack.length - 1] : null;
   const id = cur ? cur.id : nav.tab;
