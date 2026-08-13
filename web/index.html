@@ -8,6 +8,7 @@
   --line:#E1E5DF; --accent:#1F6B4A; --accent-bg:#E7F0EA;
   --amber:#A9700B; --amber-bg:#FBF1DE; --red:#A93B2C; --red-bg:#FAEAE7;
   --blue:#2C6187; --blue-bg:#E6EEF5; --r:14px;
+  --safe-b:max(6px, calc(env(safe-area-inset-bottom, 0px) / 1.6));
 }
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
@@ -146,7 +147,7 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
   background:var(--accent-bg);border-radius:20px;padding:3px 10px;cursor:pointer}
 
 .tabs{display:flex;background:var(--card);border-top:1px solid var(--line);
-  padding:6px 0 max(6px, calc(env(safe-area-inset-bottom, 0px) / 1.6));
+  padding:6px 0 var(--safe-b);
   position:fixed;bottom:0;left:0;right:0;margin:0 auto;max-width:400px;z-index:20;
   border-radius:0 0 24px 24px}
 .tabs button{flex:1;min-width:0;border:0;background:none;padding:5px 0 4px;cursor:pointer;font-family:inherit;
@@ -167,6 +168,17 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .link{color:var(--accent);text-decoration:none;border-bottom:1px solid #BFD5C6;cursor:pointer}
 .empty{text-align:center;color:var(--ink2);font-size:13.5px;padding:28px 14px;line-height:1.5}
 
+/* внутри Telegram — цельный лист без рамки, на весь экран */
+body.tg{padding:0;background:var(--bg);
+  --safe-b:max(6px, calc(env(safe-area-inset-bottom, 0px) / 1.6),
+              calc(var(--tg-safe-area-inset-bottom, 0px) / 1.6))}
+.tg .phone{max-width:none;border-radius:0;box-shadow:none;min-height:100vh;min-height:100dvh}
+.tg .tabs,.tg .ai-bar,.tg .sheet{max-width:none}
+.tg .tabs{border-radius:0}
+/* плавающие кнопки Telegram («Закрыть» и «⋯») не наезжают на шапку */
+.tg .hdr{padding-top:calc(12px + max(var(--top-inset, 0px),
+  calc(var(--tg-safe-area-inset-top, 0px) + var(--tg-content-safe-area-inset-top, 0px))))}
+
 /* КБЖУ дня */
 .macro{display:flex;align-items:center;gap:12px;background:var(--card);border-radius:var(--r);
   padding:11px 14px;margin-bottom:10px}
@@ -184,7 +196,7 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .msg.ai{background:#fff;align-self:flex-start;border-bottom-left-radius:5px}
 .msg.typing{color:var(--ink3)}
 .ai-bar{position:fixed;left:0;right:0;margin:0 auto;max-width:400px;z-index:19;
-  bottom:calc(58px + env(safe-area-inset-bottom, 0px) / 1.6);
+  bottom:calc(54px + var(--safe-b));
   display:none;gap:8px;padding:8px 10px;background:var(--bg);border-top:1px solid var(--line)}
 .ai-bar.on{display:flex}
 .ai-bar input{flex:1;min-width:0;border:1px solid var(--line);border-radius:20px;
@@ -379,7 +391,22 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 <script>
 /* ---------- API ---------- */
 const tg = window.Telegram && window.Telegram.WebApp;
-if (tg) { tg.ready(); tg.expand(); }
+if (tg) {
+  tg.ready(); tg.expand();
+  if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();  // свайп вниз не закрывает приложение
+  document.body.classList.add('tg');                          // цельный лист без рамки
+  const setInsets = () => {
+    // отступ сверху под плавающие кнопки Telegram («Закрыть», «⋯»)
+    const top = ((tg.safeAreaInset && tg.safeAreaInset.top) || 0) +
+                ((tg.contentSafeAreaInset && tg.contentSafeAreaInset.top) || 0);
+    if (top) document.documentElement.style.setProperty('--top-inset', top + 'px');
+  };
+  setInsets();
+  if (tg.onEvent) {
+    tg.onEvent('safeAreaChanged', setInsets);
+    tg.onEvent('contentSafeAreaChanged', setInsets);
+  }
+}
 async function api(path, opts = {}) {
   const r = await fetch(path, {...opts,
     headers: {'X-Init-Data': (tg && tg.initData) || '', ...(opts.headers || {})}});
