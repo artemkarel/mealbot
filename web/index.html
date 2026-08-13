@@ -176,6 +176,25 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .macro .t3{font-size:11px;color:var(--ink3);margin-top:2px}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;vertical-align:1px}
 
+/* чат с ИИ-диетологом */
+.chat{display:flex;flex-direction:column;padding-bottom:4px}
+.msg{max-width:86%;border-radius:14px;padding:9px 12px;margin:5px 0;font-size:14px;
+  line-height:1.5;white-space:pre-wrap;overflow-wrap:break-word}
+.msg.me{background:var(--accent);color:#fff;align-self:flex-end;border-bottom-right-radius:5px}
+.msg.ai{background:#fff;align-self:flex-start;border-bottom-left-radius:5px}
+.msg.typing{color:var(--ink3)}
+.ai-bar{position:fixed;left:0;right:0;margin:0 auto;max-width:400px;z-index:19;
+  bottom:calc(58px + env(safe-area-inset-bottom, 0px) / 1.6);
+  display:none;gap:8px;padding:8px 10px;background:var(--bg);border-top:1px solid var(--line)}
+.ai-bar.on{display:flex}
+.ai-bar input{flex:1;min-width:0;border:1px solid var(--line);border-radius:20px;
+  padding:9px 14px;font:inherit;font-size:14px;background:#fff;color:var(--ink);-webkit-appearance:none}
+.ai-bar button{flex:0 0 auto;width:38px;height:38px;border:0;border-radius:50%;background:var(--accent);
+  color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
+.ai-bar button:disabled{background:#C3CAC4}
+.hint-chip{display:inline-block;background:#fff;border:1px solid var(--line);border-radius:16px;
+  padding:7px 12px;font-size:13px;color:var(--ink);cursor:pointer;margin:3px 4px 3px 0}
+
 /* шторка замены приёма */
 .sheet-wrap{position:fixed;inset:0;z-index:40;display:none}
 .sheet-wrap.on{display:block}
@@ -270,6 +289,12 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
     </div>
   </div>
 
+  <!-- ===== ИИ-ДИЕТОЛОГ ===== -->
+  <div class="scr" id="s-ai">
+    <div id="aiMsgs" class="chat"></div>
+    <div style="height:58px"></div>   <!-- место под поле ввода -->
+  </div>
+
   <!-- ===== ПРОФИЛЬ ===== -->
   <div class="scr" id="s-me">
     <div class="sect">Порции</div>
@@ -334,10 +359,16 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
   <div class="tabs" id="tabbar">
     <button class="on" onclick="go('today',this)"><span class="i">🍽</span>Сегодня</button>
     <button onclick="go('week',this)"><span class="i">🗓</span>Неделя</button>
+    <button onclick="go('ai',this)"><span class="i">💬</span>Диетолог</button>
     <button onclick="go('recipes',this)"><span class="i">📖</span>Рецепты</button>
     <button onclick="go('shop',this)"><span class="i">🧺</span>Закупки</button>
     <button onclick="go('me',this)"><span class="i">👤</span>Профиль</button>
   </div>
+</div>
+<div class="ai-bar" id="aiBar">
+  <input id="aiInp" placeholder="Спроси про питание…" autocomplete="off"
+    onkeydown="if(event.key==='Enter')sendAi()">
+  <button id="aiSend" onclick="sendAi()">➤</button>
 </div>
 <div class="sheet-wrap" id="sheetWrap">
   <div class="sheet-bg" onclick="closeSheet()"></div>
@@ -373,6 +404,8 @@ let nav = {tab: 'today', stack: []};
 let st = {shop: 0, cookDays: 1, editPlace: null,
           shopGroup: localStorage.getItem('shopGroup') || 'cat',
           checked: new Set(JSON.parse(localStorage.getItem('shopChecked') || '[]'))};
+let aiHist = JSON.parse(localStorage.getItem('aiChat') || '[]');   // чат с диетологом
+let aiBusy = false;
 
 /* ---------- утилиты ---------- */
 const esc = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -410,12 +443,13 @@ function titles() {
   return {
     today: [dn, planTitle],
     week:  ['План на неделю', planTitle],
+    ai:    ['Диетолог', 'Отвечу на любой вопрос о питании'],
     recipes: ['Рецепты', 'Свои рецепты для блюд плана'],
     shop:  ['Закупки', 'Две части, чтобы ничего не испортилось'],
     me:    ['Профиль', 'Порции и напоминания']
   };
 }
-const RENDER = {today: renderToday, cook: renderCook, mode: renderMode,
+const RENDER = {today: renderToday, cook: renderCook, mode: renderMode, ai: renderAi,
                 week: renderWeek, shop: renderShop, me: renderMe, recipes: renderRecipes};
 function go(tab, btn) {
   nav = {tab, stack: []};
@@ -435,6 +469,7 @@ function paint() {
   document.getElementById('hTitle').textContent = cur ? cur.title : T[nav.tab][0];
   document.getElementById('hSub').textContent = cur ? cur.sub : T[nav.tab][1];
   document.getElementById('dayStrip').style.display = (!cur && nav.tab === 'today') ? 'flex' : 'none';
+  document.getElementById('aiBar').classList.toggle('on', !cur && nav.tab === 'ai');
   window.scrollTo(0, 0);
   (RENDER[id] || (() => {}))();
 }
@@ -552,6 +587,58 @@ function macroCard(mac) {
         <span class="dot" style="background:var(--blue);margin-left:8px"></span>Угл. ${t.carb} г</div>
       <div class="t3">на одного, примерно по справочнику блюд</div>
     </div></div>`;
+}
+
+/* ---------- чат с ИИ-диетологом ---------- */
+const AI_HINTS = ['Чем заменить киноа?', 'Что выбрать в ресторане?',
+                  'Как сахар влияет на сон?', 'Почему в плане нет глютена?'];
+function renderAi() {
+  const el = document.getElementById('aiMsgs');
+  if (!aiHist.length && !aiBusy) {
+    el.innerHTML = `<div class="note blue"><span class="ic">💬</span>
+        <div><b>Онлайн-диетолог</b><br>Знает твой план, состав блюд и КБЖУ. Спрашивай что угодно
+        о питании и его влиянии на здоровье. Диагнозы не ставит — с болезнями к врачу.</div></div>
+      <div style="padding:2px 2px 8px">${AI_HINTS.map(h =>
+        `<span class="hint-chip" onclick="sendAi('${h}')">${h}</span>`).join('')}</div>`;
+    return;
+  }
+  el.innerHTML =
+    `<div style="text-align:right;padding:2px 2px 4px">
+       <span class="link" style="font-size:12px" onclick="clearAi()">очистить чат</span></div>`
+    + aiHist.map(m => `<div class="msg ${m.role === 'user' ? 'me' : 'ai'}">${esc(m.content)}</div>`).join('')
+    + (aiBusy ? '<div class="msg ai typing">Печатает…</div>' : '');
+  const last = el.lastElementChild;
+  if (last) last.scrollIntoView({block: 'nearest'});
+}
+async function sendAi(text) {
+  if (aiBusy) return;
+  const inp = document.getElementById('aiInp');
+  const q = (text || inp.value).trim();
+  if (!q) return;
+  inp.value = '';
+  aiHist.push({role: 'user', content: q});
+  aiBusy = true;
+  document.getElementById('aiSend').disabled = true;
+  renderAi();
+  try {
+    const r = await api('/api/ai', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({message: q, history: aiHist.slice(-9, -1)})});
+    aiHist.push({role: 'assistant', content: r.answer});
+  } catch (e) {
+    aiHist.pop();
+    toast(e.message);
+  }
+  aiBusy = false;
+  document.getElementById('aiSend').disabled = false;
+  localStorage.setItem('aiChat', JSON.stringify(aiHist.slice(-40)));
+  renderAi();
+}
+function clearAi() {
+  ask('Очистить переписку с диетологом?', () => {
+    aiHist = [];
+    localStorage.setItem('aiChat', '[]');
+    renderAi();
+  });
 }
 
 /* ---------- «не хочу это» — замена приёма ---------- */

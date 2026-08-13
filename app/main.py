@@ -9,6 +9,7 @@ from app.db import (connect, init, current_plan, persons_of, set_current_plan,
 from app.cooking import cook_plan, same_days
 from app.macros import day_macros
 from app.shopping import build as build_shopping
+from app import ai
 from app import auth
 
 init()
@@ -323,6 +324,36 @@ def swap_revert(day: int, meal: str, x_init_data: str = Header(None)):
                 " WHERE user_id=? AND plan_id=? AND day_index=? AND meal=?",
                 (uid, plan["id"], day, meal))
     con.commit(); return {"ok": True}
+
+# ---------- ИИ-диетолог ----------
+
+@app.post("/api/ai")
+async def ai_chat(payload: dict, x_init_data: str = Header(None)):
+    """Чат с онлайн-диетологом. История хранится у клиента и приходит с запросом."""
+    uid = me(x_init_data)["id"]
+    msg = str(payload.get("message") or "").strip()[:2000]
+    if not msg: raise HTTPException(400, "напиши вопрос")
+    if not ai.ANTHROPIC_KEY:
+        raise HTTPException(503, "ИИ-помощник не подключён (нет ANTHROPIC_API_KEY)")
+    # история: только валидные реплики, строго чередующиеся, начиная с user
+    clean = []
+    for h in (payload.get("history") or [])[-8:]:
+        role, content = h.get("role"), str(h.get("content") or "").strip()[:2000]
+        if role not in ("user", "assistant") or not content: continue
+        if clean and clean[-1]["role"] == role:
+            clean[-1] = {"role": role, "content": content}
+        else:
+            clean.append({"role": role, "content": content})
+    while clean and clean[0]["role"] != "user": clean.pop(0)
+    if clean and clean[-1]["role"] == "user": clean.pop()
+    clean.append({"role": "user", "content": msg})
+    try:
+        answer = await ai.ask_claude(ai.AI_SYSTEM + "\n\n" + ai.ai_context(uid), clean)
+    except Exception as e:
+        raise HTTPException(502, f"не получилось спросить: {e}")
+    if not answer:
+        raise HTTPException(502, "помощник промолчал — попробуй переформулировать")
+    return {"answer": answer}
 
 # ---------- напоминания ----------
 
