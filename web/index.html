@@ -14,7 +14,12 @@
 body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif;
   color:var(--ink);display:flex;justify-content:center;padding:20px 12px;min-height:100vh}
 .phone{width:100%;max-width:400px;background:var(--bg);border-radius:26px;overflow:hidden;
-  box-shadow:0 8px 40px rgba(0,0,0,.16);display:flex;flex-direction:column;min-height:800px}
+  box-shadow:0 8px 40px rgba(0,0,0,.16);display:flex;flex-direction:column;min-height:800px;
+  position:relative}
+/* свайп «назад»: верхний экран едет за пальцем, нижний ждёт с параллаксом */
+.scr.drag{position:relative;z-index:5;background:var(--bg);box-shadow:-10px 0 30px rgba(0,0,0,.18)}
+.scr.under{display:block;position:absolute;left:0;right:0;bottom:0;z-index:1;overflow:hidden;
+  pointer-events:none;transform:translateX(-25%)}
 .num{font-variant-numeric:tabular-nums}
 
 .hdr{background:var(--card);padding:12px 14px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
@@ -157,6 +162,9 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .tabs button.on{color:var(--accent);font-weight:600}
 .add-toggle{width:100%;justify-content:center;border:0;padding:12px;font-size:13.5px;color:var(--accent)}
 .tag.rcp{background:var(--accent-bg);color:var(--accent);cursor:pointer;border:0;font-family:inherit}
+.swap-btn{flex:0 0 auto;width:28px;height:28px;border:0;border-radius:50%;background:var(--accent-bg);
+  color:var(--accent);cursor:pointer;display:flex;align-items:center;justify-content:center;padding:0}
+.swap-btn:active{background:#D3E4D9}
 .frm{padding:12px 14px;display:flex;flex-direction:column;gap:8px}
 .frm select,.frm input,.frm textarea{border:1px solid var(--line);border-radius:9px;padding:8px 10px;
   font:inherit;font-size:14px;background:#fff;color:var(--ink);width:100%;-webkit-appearance:none;resize:vertical}
@@ -247,7 +255,9 @@ body.tg{padding:0;background:var(--bg);
     </div>
     <div id="cookHead"></div>
     <div id="persCook"></div>
+    <div class="sect">Сначала собери продукты</div>
     <div class="card" id="cookList"></div>
+    <div id="cookSteps"></div>
     <div id="cookFoot"></div>
   </div>
 
@@ -516,23 +526,63 @@ function go(tab, btn) {
 function push(id, title, sub) { nav.stack.push({id, title, sub}); paint(); }
 function back() { nav.stack.pop(); paint(); }
 
-/* горизонтальный свайп — назад (жест как в самом телефоне); открытую шторку закрывает */
-function handleSwipe(dx, dy, dt) {
-  if (dt > 600 || Math.abs(dy) > 60 || Math.abs(dx) < 70 ||
-      Math.abs(dx) < Math.abs(dy) * 1.5) return;
-  if (document.getElementById('sheetWrap').classList.contains('on')) return closeSheet();
-  if (nav.stack.length) back();
+/* интерактивный свайп слева направо — назад: экран уезжает вправо за пальцем,
+   под ним появляется предыдущий (стандартный жест «назад») */
+let sw = null;
+function swipeTargets() {
+  if (document.getElementById('sheetWrap').classList.contains('on') || !nav.stack.length) return null;
+  const fromId = nav.stack[nav.stack.length - 1].id;
+  const toId = nav.stack.length > 1 ? nav.stack[nav.stack.length - 2].id : nav.tab;
+  const from = document.getElementById('s-' + fromId), to = document.getElementById('s-' + toId);
+  return from && to && from !== to ? {from, to} : null;
 }
-let swS = null;
 document.addEventListener('touchstart', e => {
-  swS = e.touches.length === 1
-    ? {x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now()} : null;
+  sw = e.touches.length === 1
+    ? {x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now(),
+       engaged: false, dead: false, tg: null, w: 0}
+    : null;
 }, {passive: true});
+document.addEventListener('touchmove', e => {
+  if (!sw || sw.dead) return;
+  const dx = e.touches[0].clientX - sw.x, dy = e.touches[0].clientY - sw.y;
+  if (!sw.engaged) {
+    if (Math.abs(dy) > 14 && Math.abs(dy) > dx) { sw.dead = true; return; }  // это скролл
+    if (dx < 14 || dx <= Math.abs(dy)) return;                               // ещё не ясно
+    const tg = swipeTargets();
+    if (!tg) { sw.dead = true; return; }
+    sw.engaged = true; sw.tg = tg;
+    sw.w = tg.from.clientWidth || innerWidth;
+    tg.to.classList.add('under');
+    tg.to.style.top = document.querySelector('.hdr').offsetHeight + 'px';
+    tg.from.classList.add('drag');
+  }
+  e.preventDefault();                                  // пока тянем — страницу не скроллим
+  const d = Math.max(0, dx);
+  sw.tg.from.style.transform = `translateX(${d}px)`;
+  sw.tg.to.style.transform = `translateX(${(-0.25 * sw.w + d / 4).toFixed(1)}px)`;
+}, {passive: false});
 document.addEventListener('touchend', e => {
-  if (!swS) return;
-  const t = e.changedTouches[0];
-  handleSwipe(t.clientX - swS.x, t.clientY - swS.y, Date.now() - swS.t);
-  swS = null;
+  if (!sw) return;
+  const dx = e.changedTouches[0].clientX - sw.x, dy = e.changedTouches[0].clientY - sw.y;
+  const dt = Date.now() - sw.t, s = sw; sw = null;
+  if (!s.engaged) {
+    // шторка закрывается простым горизонтальным жестом
+    if (dt < 600 && dx > 70 && Math.abs(dy) < 60 && dx > Math.abs(dy) * 1.5 &&
+        document.getElementById('sheetWrap').classList.contains('on')) closeSheet();
+    return;
+  }
+  const {from, to} = s.tg, w = s.w;
+  const done = dx > w * 0.33 || (dx > 70 && dt < 300);   // дотянул или резко смахнул
+  from.style.transition = to.style.transition = 'transform .2s ease';
+  from.style.transform = done ? `translateX(${w}px)` : 'translateX(0)';
+  to.style.transform = done ? 'translateX(0)' : `translateX(${(-0.25 * w).toFixed(1)}px)`;
+  setTimeout(() => {
+    for (const el of [from, to]) {
+      el.classList.remove('drag', 'under');
+      el.style.transition = el.style.transform = el.style.top = '';
+    }
+    if (done) back();
+  }, 210);
 }, {passive: true});
 function paint() {
   const cur = nav.stack.length ? nav.stack[nav.stack.length - 1] : null;
@@ -615,7 +665,13 @@ async function renderToday() {
       <div class="meal-h"><span class="t">${esc(m.meal)}</span>
         ${m.swapped ? '<span class="tag" style="background:var(--blue-bg);color:var(--blue)">заменено</span>' : ''}
         ${m.optional ? '<span class="tag opt">по желанию</span>' : ''}
-        ${kcal ? `<span class="time num">≈${kcal} ккал</span>` : ''}</div>
+        ${kcal ? `<span class="time num">≈${kcal} ккал</span>` : ''}
+        <button class="swap-btn" onclick="openSwap('${esc(m.meal)}')" title="Заменить приём">
+          <svg viewBox="0 0 24 24" width="15" height="15" fill="none" stroke="currentColor"
+            stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+            <polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/>
+            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+          </svg></button></div>
       <div class="rows" style="padding-bottom:10px">${rows}</div>
       ${m.note ? `<div style="padding:0 14px 12px;font-size:12.5px;color:var(--ink2)">${esc(m.note)}</div>` : ''}
     </div>`;
@@ -845,7 +901,9 @@ function setCook(d, btn) {
 async function renderCook() {
   const d = st.cookDays, key = day + ':' + d;
   document.getElementById('persCook').innerHTML = persBar(d === 2 ? 'Умножается ещё и на 2 дня' : 'На один день');
-  const t = dayCache[day], dn = t && t.day_name || DS[day];
+  let t = dayCache[day];
+  if (!t) { try { t = await loadDay(day); } catch (e) { t = null; } }
+  const dn = t && t.day_name || DS[day];
   document.getElementById('cookHead').innerHTML = d === 2
     ? (t && t.same_as.length
        ? `<div class="note green"><span class="ic">♻️</span><div><b>${esc(dn)} и ${t.same_as.map(i=>DS[i]).join(', ')} совпадают</b><br>
@@ -880,10 +938,39 @@ async function renderCook() {
       <div class="for">${esc(x.meals)}</div>
     </div>`;
   }).join('') || '<div class="empty">Для этого дня нет раскладки в справочнике</div>';
-  document.getElementById('cookFoot').innerHTML =
-    `<div class="note amber"><span class="ic">📐</span><div><b>Веса пересчитаны, а не взяты из плана</b><br>
-      В плане — вес готового блюда. Крупы разбухают в 2,2–3 раза, рыба и мясо теряют около 20%.
-      В магазин идёт левая колонка, на тарелку — правая.</div></div>`;
+
+  // пошаговый план на день: каждый приём — блюда с рецептами из меню.
+  // Строится из dayCache, поэтому замены блюд и новые рецепты подхватываются сами.
+  const mult = P * d;
+  const meals = t ? [...t.meals].sort((a, b) => MEAL_ORDER.indexOf(a.meal) - MEAL_ORDER.indexOf(b.meal)) : [];
+  recipeReg = recipeReg || [];
+  document.getElementById('cookSteps').innerHTML = meals.map((m, mi) => {
+    const dishes = m.items.map(it => {
+      const qty = amt(it.qty_min, it.qty_max, it.unit);
+      if (!it.recipe) {
+        return `<div class="card">
+          <div class="meal-h"><span class="t">${esc(it.name)}</span>
+            <span class="time num">${qty}</span></div>
+          <div style="padding:0 14px 12px;font-size:13.5px;color:var(--ink2)">
+            Готовить не нужно — просто достань и подай.</div>
+        </div>`;
+      }
+      const r = it.recipe;
+      const ings = r.ingredients.length
+        ? `<div style="padding:0 14px 8px;font-size:13px;color:var(--ink2)"><b>Понадобится:</b> ${
+            r.ingredients.map(g => esc(g.name) + (g.qty ? ` — ${esc(g.qty)} ${esc(g.unit || '')}` : '')).join('; ')}${
+            mult > 1 ? ` <span style="color:var(--amber)">(на 1 порцию — готовь ×${mult})</span>` : ''}</div>`
+        : '';
+      return `<div class="card">
+        <div class="meal-h"><span class="t">${esc(it.name)}</span>
+          <span class="time num">${qty}</span></div>
+        ${ings}
+        ${r.steps.map((s, i) =>
+          `<div class="mode-step"><span class="k num">${i + 1}</span><div class="b">${esc(s)}</div></div>`).join('')}
+      </div>`;
+    }).join('');
+    return `<div class="sect">${mi + 1}. ${esc(m.meal)}${m.optional ? ' — по желанию' : ''}</div>` + dishes;
+  }).join('') || '';
 }
 
 /* ---------- рецепт ---------- */
@@ -1082,7 +1169,9 @@ async function renderRecipes() {
     const ri = recipeReg.push(x) - 1;
     return `<div class="chk" style="cursor:default">
       <span class="lbl"><span class="link" onclick="openRec(${ri})">${esc(x.title)}</span>
-        <span class="meta">из файла плана · ${esc(x.dish)}</span></span>
+        <span class="meta">${esc(x.dish)}</span></span>
+      ${x.can_delete ? `<button class="btn" style="padding:4px 9px;font-size:12px;color:var(--red)"
+        onclick="delPlanRecipe(${x.id})">Удалить</button>` : ''}
     </div>`;
   }).join('');
   document.getElementById('recList').innerHTML =
@@ -1111,7 +1200,13 @@ async function addRecipe() {
 function delRecipe(id) {
   ask('Удалить рецепт?', async () => {
     try { await api('/api/recipes/delete?id=' + id, {method: 'POST'}); } catch (e) { return toast(e.message); }
-    dayCache = {}; renderRecipes(); toast('Рецепт удалён');
+    resetCaches(); renderRecipes(); toast('Рецепт удалён — ссылки в меню пропали');
+  });
+}
+function delPlanRecipe(id) {
+  ask('Удалить рецепт? Ссылка «рецепт» пропадёт из меню у этого блюда.', async () => {
+    try { await api('/api/recipes/delete_plan?id=' + id, {method: 'POST'}); } catch (e) { return toast(e.message); }
+    resetCaches(); renderRecipes(); toast('Рецепт удалён — ссылки в меню пропали');
   });
 }
 

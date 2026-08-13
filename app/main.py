@@ -491,13 +491,16 @@ def recipes_list(x_init_data: str = Header(None)):
         dishes = [r["name"] for r in con.execute(
             "SELECT DISTINCT name FROM plan_items WHERE plan_id=? ORDER BY name",
             (plan["id"],))]
+        plan_owner = plan["user_id"]      # None = общий план
         # рецепты из файла диетолога + базовые (plan_id IS NULL); дубли схлопываем
         for r in con.execute("SELECT * FROM recipes WHERE plan_id=? OR plan_id IS NULL"
                              " ORDER BY plan_id IS NULL", (plan["id"],)):
             key = (r["dish"], r["title"])
             if key in seen: continue
             seen.add(key)
-            plan_recipes.append({"dish": r["dish"], "title": r["title"],
+            shared = r["plan_id"] is None or plan_owner is None
+            plan_recipes.append({"id": r["id"], "dish": r["dish"], "title": r["title"],
+                                 "can_delete": (uid in ADMINS) if shared else True,
                                  "ingredients": json.loads(r["ingredients_json"] or "[]"),
                                  "steps": json.loads(r["steps_json"] or "[]")})
     return {"recipes": [{**_user_recipe(r), "id": r["id"], "dish": r["dish"]} for r in rows],
@@ -524,6 +527,22 @@ def recipe_delete(id: int, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
     con = connect()
     con.execute("DELETE FROM user_recipes WHERE id=? AND user_id=?", (id, uid))
+    con.commit(); return {"ok": True}
+
+@app.post("/api/recipes/delete_plan")
+def recipe_delete_plan(id: int, x_init_data: str = Header(None)):
+    """Удалить рецепт плана или базовый — ссылка «рецепт» пропадёт из меню.
+    Общие и базовые может удалять только админ, рецепты своего плана — владелец."""
+    uid = me(x_init_data)["id"]
+    con = connect()
+    r = con.execute("SELECT r.id, r.plan_id, p.user_id owner FROM recipes r"
+                    " LEFT JOIN plans p ON p.id = r.plan_id WHERE r.id=?", (id,)).fetchone()
+    if not r: raise HTTPException(404, "рецепт не найден")
+    if (r["plan_id"] is None or r["owner"] is None) and uid not in ADMINS:
+        raise HTTPException(403, "общий рецепт может удалить только админ")
+    if r["plan_id"] is not None and r["owner"] is not None and r["owner"] != uid:
+        raise HTTPException(404, "это не твой рецепт")
+    con.execute("DELETE FROM recipes WHERE id=?", (id,))
     con.commit(); return {"ok": True}
 
 # ---------- БАДы ----------
