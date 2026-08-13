@@ -1,5 +1,5 @@
 """Бот: принимает пересланный файл плана, шлёт напоминания, открывает мини-приложение."""
-import asyncio, os, shutil, subprocess, sys, tempfile
+import asyncio, json, os, shutil, subprocess, sys, tempfile
 from datetime import date, datetime, timedelta, timezone
 from pathlib import Path
 try:
@@ -15,7 +15,7 @@ from import_plan import save
 from app.db import connect, current_plan, persons_of, set_current_plan, day_items
 from app.cooking import same_days
 from app.shopping import build as build_shopping
-from app.ai import ask_claude, ai_context, AI_SYSTEM, ANTHROPIC_KEY
+from app.ai import ask_claude, ai_context, split_recipe, AI_SYSTEM, ANTHROPIC_KEY
 
 ROOT = Path(__file__).parent.parent
 
@@ -31,6 +31,45 @@ kb = InlineKeyboardMarkup(inline_keyboard=[[
 DAY_NAMES = ["понедельник", "вторник", "среду", "четверг", "пятницу", "субботу", "воскресенье"]
 
 
+# ---------- чат «в одном окне» ----------
+# Перед каждым новым сообщением бот удаляет предыдущую пару вопрос-ответ,
+# чтобы переписка не копилась. id для очистки живут в таблице settings.
+
+def _clean_ids(chat_id):
+    con = connect()
+    r = con.execute("SELECT value FROM settings WHERE key=?",
+                    ("clean:%s" % chat_id,)).fetchone()
+    try:
+        return json.loads(r["value"]) if r else []
+    except Exception:
+        return []
+
+
+def _save_clean_ids(chat_id, ids):
+    con = connect()
+    con.execute("INSERT INTO settings(key,value) VALUES(?,?)"
+                " ON CONFLICT(key) DO UPDATE SET value=excluded.value",
+                ("clean:%s" % chat_id, json.dumps(ids[-20:])))
+    con.commit()
+
+
+async def tidy_chat(chat_id):
+    for mid in _clean_ids(chat_id):
+        try:
+            await bot.delete_message(chat_id, mid)
+        except Exception:
+            pass                     # старше 48 часов или уже удалено
+    _save_clean_ids(chat_id, [])
+
+
+async def reply_clean(m: Message, text, **kw):
+    """Ответ с очисткой: удаляет прошлые сообщения, запоминает новую пару."""
+    await tidy_chat(m.chat.id)
+    sent = await m.answer(text, **kw)
+    _save_clean_ids(m.chat.id, [m.message_id, sent.message_id])
+    return sent
+
+
 def allowed(m: Message) -> bool:
     """Пустой ALLOWED_USER_IDS = бот открыт для всех; данные у каждого свои."""
     return not ALLOWED or m.from_user.id in ALLOWED
@@ -42,7 +81,7 @@ def admin(m: Message) -> bool:
 
 async def start(m: Message):
     if not allowed(m): return
-    await m.answer("Пришли файл с планом от диетолога — разберу и открою.\n"
+    await reply_clean(m, "Пришли файл с планом от диетолога — разберу и открою.\n"
                    "План, отметки и закупки у каждого пользователя свои.\n\n"
                    "А ещё можно просто написать вопрос — например, «чем заменить киноа?» "
                    "— отвечу как помощник, который знает твой план.", reply_markup=kb)
@@ -52,18 +91,18 @@ async def got_file(m: Message):
     if not allowed(m): return
     name = m.document.file_name or "plan.docx"
     if not name.lower().endswith((".docx", ".txt")):
-        return await m.answer("Нужен .docx или .txt")
+        return await reply_clean(m, "Нужен .docx или .txt")
     with tempfile.TemporaryDirectory() as tmp:
         path = Path(tmp) / name
         await bot.download(m.document, destination=path)
         try:
             plan_id = save(str(path), m.from_user.id)
         except Exception as e:
-            return await m.answer(f"Не смог разобрать: {e}")
+            return await reply_clean(m, f"Не смог разобрать: {e}")
     con = connect()
     set_current_plan(con, m.from_user.id, plan_id)
     con.commit()
-    await m.answer(f"План загружен (#{plan_id}) и выбран текущим.", reply_markup=kb)
+    await reply_clean(m, f"План загружен (#{plan_id}) и выбран текущим.", reply_markup=kb)
 
 
 # ---------- команды ----------
@@ -93,17 +132,17 @@ def day_menu_text(offset: int, uid: int) -> str:
 
 async def cmd_today(m: Message):
     if not allowed(m): return
-    await m.answer(day_menu_text(0, m.from_user.id), reply_markup=kb)
+    await reply_clean(m, day_menu_text(0, m.from_user.id), reply_markup=kb)
 
 
 async def cmd_tomorrow(m: Message):
     if not allowed(m): return
-    await m.answer(day_menu_text(1, m.from_user.id), reply_markup=kb)
+    await reply_clean(m, day_menu_text(1, m.from_user.id), reply_markup=kb)
 
 
 async def cmd_myid(m: Message):
     # без проверки allowed: команда и нужна, чтобы узнать свой ID для белого списка
-    await m.answer(f"Твой Telegram ID: {m.from_user.id}")
+    await reply_clean(m, f"Твой Telegram ID: {m.from_user.id}")
 
 
 async def cmd_status(m: Message):
@@ -122,7 +161,7 @@ async def cmd_status(m: Message):
                          (uid,)).fetchone()["c"]
     rems = con.execute("SELECT COUNT(*) c FROM user_reminders WHERE user_id=? AND enabled=1",
                        (uid,)).fetchone()["c"]
-    await m.answer(f"{head}\nВ холодильнике на учёте: {fridge}\n"
+    await reply_clean(m, f"{head}\nВ холодильнике на учёте: {fridge}\n"
                    f"Напоминаний настроено: {rems} (настраиваются в приложении, Профиль)",
                    reply_markup=kb)
 
@@ -135,7 +174,7 @@ async def cmd_version(m: Message):
                            capture_output=True, text=True, timeout=10).stdout.strip()
     except Exception as e:
         v = f"не удалось узнать: {e}"
-    await m.answer(f"Версия кода: {v or 'git недоступен'}")
+    await reply_clean(m, f"Версия кода: {v or 'git недоступен'}")
 
 
 def _run_detached(args):
@@ -148,14 +187,14 @@ def _run_detached(args):
 
 async def cmd_update(m: Message):
     if not admin(m): return
-    await m.answer("Обновляюсь с GitHub… Сервисы перезапустятся, "
+    await reply_clean(m, "Обновляюсь с GitHub… Сервисы перезапустятся, "
                    "через минуту проверь /version.")
     _run_detached([str(ROOT / "update.sh")])
 
 
 async def cmd_restart(m: Message):
     if not admin(m): return
-    await m.answer("Перезапускаю бота и веб…")
+    await reply_clean(m, "Перезапускаю бота и веб…")
     _run_detached(["systemctl", "restart", "mealplan-bot", "mealplan-web"])
 
 
@@ -182,10 +221,10 @@ async def ai_chat(m: Message):
     if not allowed(m) or not m.text:
         return
     if m.text.startswith("/"):
-        return await m.answer("Такой команды нет. Просто напиши вопрос текстом — "
+        return await reply_clean(m, "Такой команды нет. Просто напиши вопрос текстом — "
                               "отвечу как помощник по твоему плану.")
     if not ANTHROPIC_KEY:
-        return await m.answer("ИИ-помощник ещё не подключён: на сервере не задан "
+        return await reply_clean(m, "ИИ-помощник ещё не подключён: на сервере не задан "
                               "ключ ANTHROPIC_API_KEY.")
     uid = m.from_user.id
     await bot.send_chat_action(m.chat.id, "typing")
@@ -197,12 +236,13 @@ async def ai_chat(m: Message):
         answer = await ask_claude(system, list(hist))
     except Exception as e:
         hist.pop()
-        return await m.answer(f"Не получилось спросить помощника: {e}")
+        return await reply_clean(m, f"Не получилось спросить помощника: {e}")
     if not answer:
         hist.pop()
-        return await m.answer("Помощник промолчал — попробуй переформулировать.")
+        return await reply_clean(m, "Помощник промолчал — попробуй переформулировать.")
     hist.append({"role": "assistant", "content": answer})
-    await m.answer(answer[:4000])
+    text, _ = split_recipe(answer)   # служебный блок рецепта показываем только в приложении
+    await reply_clean(m, text[:4000])
 
 
 # ---------- напоминания ----------
@@ -293,15 +333,24 @@ def build_shopping_note(uid: int) -> str:
             f" и {n2} во второй — открой вкладку «Закупки».")
 
 
+def build_menu(uid: int) -> str:
+    """Напоминание «что мы едим сегодня» — меню дня одним сообщением."""
+    con = connect()
+    return day_menu_text(0, uid) if current_plan(con, uid) else ""
+
+
 async def fire_reminder(r):
     uid = r["user_id"]
     builders = {"morning": lambda: build_morning(uid),
                 "evening": lambda: build_evening(uid),
                 "shopping": lambda: build_shopping_note(uid),
+                "menu": lambda: build_menu(uid),
                 "meal": lambda: build_meal(uid, r["meal"])}
     text = builders.get(r["kind"], lambda: "")()
     if text:
-        await bot.send_message(uid, text, reply_markup=kb)
+        await tidy_chat(uid)         # чат «в одном окне»: убираем прошлые сообщения
+        sent = await bot.send_message(uid, text, reply_markup=kb)
+        _save_clean_ids(uid, [sent.message_id])
 
 
 def _minutes(hhmm: str) -> int:

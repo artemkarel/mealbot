@@ -1,5 +1,5 @@
 <meta charset="utf-8">
-<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>План питания</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
@@ -200,7 +200,7 @@ body.tg{padding:0;background:var(--bg);
   display:none;gap:8px;padding:8px 10px;background:var(--bg);border-top:1px solid var(--line)}
 .ai-bar.on{display:flex}
 .ai-bar input{flex:1;min-width:0;border:1px solid var(--line);border-radius:20px;
-  padding:9px 14px;font:inherit;font-size:14px;background:#fff;color:var(--ink);-webkit-appearance:none}
+  padding:8px 14px;font:inherit;font-size:16px;background:#fff;color:var(--ink);-webkit-appearance:none}
 .ai-bar button{flex:0 0 auto;width:38px;height:38px;border:0;border-radius:50%;background:var(--accent);
   color:#fff;font-size:16px;cursor:pointer;display:flex;align-items:center;justify-content:center}
 .ai-bar button:disabled{background:#C3CAC4}
@@ -318,6 +318,23 @@ body.tg{padding:0;background:var(--bg);
     <div class="card"><button class="btn gh add-toggle" id="genBtn" onclick="genMenu()">🎲 Сгенерировать меню на неделю</button></div>
     <div id="genPreview" style="display:none"></div>
 
+    <div class="card"><button class="btn gh add-toggle" id="impBtn"
+      onclick="toggleAdd('impFormWrap','impBtn','➕ Добавить план — файл или текст')">➕ Добавить план — файл или текст</button></div>
+    <div id="impFormWrap" style="display:none">
+      <div class="card"><div class="frm">
+        <input type="file" id="impFile" accept=".pdf,.docx,.txt,.xlsx,.xlsm,.md,.csv,image/*">
+        <textarea id="impText" rows="5" placeholder="…или вставь план текстом"></textarea>
+        <button class="btn pri" id="impGo" onclick="importPlan()">Распознать через ИИ и сохранить</button>
+        <div style="font-size:12px;color:var(--ink3)">Подойдёт PDF, Word, Excel или обычный текст.
+          ИИ разложит документ по дням и приёмам, план появится в «Мои» и станет текущим.
+          Обычно занимает до минуты.</div>
+      </div></div>
+    </div>
+
+    <div class="sect">Рецепты</div>
+    <div class="card"><button class="btn gh add-toggle"
+      onclick="push('recipes','Рецепты','Свои рецепты для блюд плана')">📖 Мои рецепты</button></div>
+
     <div class="sect">Напоминания</div>
     <div class="card" id="remList"><div class="empty">Загрузка…</div></div>
     <div class="card"><button class="btn gh add-toggle" id="remAddBtn"
@@ -326,6 +343,7 @@ body.tg{padding:0;background:var(--bg);
       <div class="card"><div class="frm">
         <select id="remKind" onchange="document.getElementById('remMeal').style.display=this.value==='meal'?'':'none'">
           <option value="meal">О приёме пищи</option>
+          <option value="menu">Меню на день (что мы едим)</option>
           <option value="shopping">О закупке</option>
           <option value="morning">Что взять с собой (утро)</option>
           <option value="evening">Подготовка на завтра (вечер)</option>
@@ -372,16 +390,20 @@ body.tg{padding:0;background:var(--bg);
     <button class="on" onclick="go('today',this)"><span class="i">🍽</span>Сегодня</button>
     <button onclick="go('week',this)"><span class="i">🗓</span>Неделя</button>
     <button onclick="go('ai',this)"><span class="i">💬</span>Диетолог</button>
-    <button onclick="go('recipes',this)"><span class="i">📖</span>Рецепты</button>
     <button onclick="go('shop',this)"><span class="i">🧺</span>Закупки</button>
     <button onclick="go('me',this)"><span class="i">👤</span>Профиль</button>
   </div>
 </div>
 <div class="ai-bar" id="aiBar">
+  <button id="aiAttach" style="background:#E2E6E0;color:var(--ink2)"
+    onclick="document.getElementById('aiFile').click()">📎</button>
   <input id="aiInp" placeholder="Спроси про питание…" autocomplete="off"
     onkeydown="if(event.key==='Enter')sendAi()">
   <button id="aiSend" onclick="sendAi()">➤</button>
 </div>
+<input type="file" id="aiFile" style="display:none"
+  accept=".pdf,.docx,.txt,.xlsx,.xlsm,.md,.csv,image/*"
+  onchange="aiImport(this.files[0]); this.value=''">
 <div class="sheet-wrap" id="sheetWrap">
   <div class="sheet-bg" onclick="closeSheet()"></div>
   <div class="sheet" id="sheetBody"></div>
@@ -632,7 +654,14 @@ function renderAi() {
   el.innerHTML =
     `<div style="text-align:right;padding:2px 2px 4px">
        <span class="link" style="font-size:12px" onclick="clearAi()">очистить чат</span></div>`
-    + aiHist.map(m => `<div class="msg ${m.role === 'user' ? 'me' : 'ai'}">${esc(m.content)}</div>`).join('')
+    + aiHist.map((m, i) =>
+        `<div class="msg ${m.role === 'user' ? 'me' : 'ai'}">${esc(m.content)}</div>`
+        + (m.recipe && m.role === 'assistant'
+           ? `<div style="align-self:flex-start;margin:-1px 0 5px">
+                <button class="btn" style="font-size:12.5px;padding:5px 10px"
+                  ${m.saved ? 'disabled' : ''} onclick="saveChatRecipe(${i})">
+                  ${m.saved ? 'Сохранено ✓' : '➕ В мои рецепты'}</button></div>`
+           : '')).join('')
     + (aiBusy ? '<div class="msg ai typing">Печатает…</div>' : '');
   const last = el.lastElementChild;
   if (last) last.scrollIntoView({block: 'nearest'});
@@ -650,13 +679,75 @@ async function sendAi(text) {
   try {
     const r = await api('/api/ai', {method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({message: q, history: aiHist.slice(-9, -1)})});
-    aiHist.push({role: 'assistant', content: r.answer});
+    aiHist.push({role: 'assistant', content: r.answer, recipe: r.recipe || null});
   } catch (e) {
     aiHist.pop();
     toast(e.message);
   }
   aiBusy = false;
   document.getElementById('aiSend').disabled = false;
+  localStorage.setItem('aiChat', JSON.stringify(aiHist.slice(-40)));
+  renderAi();
+}
+async function saveChatRecipe(i) {
+  const rc = aiHist[i] && aiHist[i].recipe;
+  if (!rc || aiHist[i].saved) return;
+  try {
+    await api('/api/recipes/add', {method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({title: rc.title, dish: rc.title,
+                            ingredients: rc.ingredients, steps: rc.steps})});
+  } catch (e) { return toast(e.message); }
+  aiHist[i].saved = true;
+  localStorage.setItem('aiChat', JSON.stringify(aiHist.slice(-40)));
+  renderAi();
+  toast('Рецепт сохранён — Профиль → Мои рецепты');
+}
+
+/* файл или фото плана прямо в чате: ИИ разберёт и добавит в планы */
+function fileToB64(f) {
+  return new Promise((res, rej) => {
+    const r = new FileReader();
+    r.onload = () => res(String(r.result).split(',')[1] || '');
+    r.onerror = rej;
+    r.readAsDataURL(f);
+  });
+}
+async function imageToB64(f) {
+  // фото ужимаем до 1600px — быстрее грузится и влезает в лимит распознавания
+  const img = await new Promise((res, rej) => {
+    const i = new Image();
+    i.onload = () => res(i); i.onerror = rej;
+    i.src = URL.createObjectURL(f);
+  });
+  const k = Math.min(1, 1600 / Math.max(img.width, img.height));
+  const c = document.createElement('canvas');
+  c.width = Math.round(img.width * k); c.height = Math.round(img.height * k);
+  c.getContext('2d').drawImage(img, 0, 0, c.width, c.height);
+  return c.toDataURL('image/jpeg', 0.85).split(',')[1];
+}
+async function planPayload(f) {
+  if (f.type.startsWith('image/')) {
+    return {filename: (f.name.replace(/\.\w+$/, '') || 'plan') + '.jpg',
+            data_b64: await imageToB64(f)};
+  }
+  return {filename: f.name, data_b64: await fileToB64(f)};
+}
+async function aiImport(f) {
+  if (!f || aiBusy) return;
+  aiHist.push({role: 'user', content: '📎 ' + f.name});
+  aiBusy = true; renderAi();
+  try {
+    const payload = await planPayload(f);
+    const r = await api('/api/plans/import', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+    resetCaches();
+    aiHist.push({role: 'assistant',
+      content: `План «${r.title}» добавлен (${r.days} дн.) и выбран текущим ✅\n`
+             + 'Проверь его на вкладках «Сегодня» и «Неделя».'});
+  } catch (e) {
+    aiHist.push({role: 'assistant', content: 'Не получилось добавить план: ' + e.message});
+  }
+  aiBusy = false;
   localStorage.setItem('aiChat', JSON.stringify(aiHist.slice(-40)));
   renderAi();
 }
@@ -998,6 +1089,26 @@ function delRecipe(id) {
   });
 }
 
+/* ---------- импорт плана из файла/текста (Профиль) ---------- */
+async function importPlan() {
+  const f = document.getElementById('impFile').files[0];
+  const text = document.getElementById('impText').value.trim();
+  if (!f && !text) return toast('Выбери файл или вставь текст плана');
+  const btn = document.getElementById('impGo');
+  btn.disabled = true; btn.textContent = 'Распознаю через ИИ…';
+  try {
+    const payload = f ? await planPayload(f) : {text};
+    const r = await api('/api/plans/import', {method: 'POST',
+      headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
+    document.getElementById('impFile').value = '';
+    document.getElementById('impText').value = '';
+    closeAdd('impFormWrap', 'impBtn', '➕ Добавить план — файл или текст');
+    resetCaches(); renderMe();
+    toast(`«${r.title}» добавлен (${r.days} дн.) и выбран текущим`);
+  } catch (e) { toast(e.message); }
+  btn.disabled = false; btn.textContent = 'Распознать через ИИ и сохранить';
+}
+
 /* ---------- генерация меню ---------- */
 let genData = null;
 async function genMenu() {
@@ -1048,8 +1159,8 @@ function ask(msg, cb) {
   if (tg && tg.showConfirm) tg.showConfirm(msg, ok => ok && cb());
   else if (confirm(msg)) cb();
 }
-const KIND_LABEL = {meal: '', shopping: 'Закупка', morning: 'Что взять с собой',
-                    evening: 'Подготовка на завтра'};
+const KIND_LABEL = {meal: '', menu: 'Меню на день', shopping: 'Закупка',
+                    morning: 'Что взять с собой', evening: 'Подготовка на завтра'};
 async function renderMe() {
   document.getElementById('persMe').innerHTML = persBar('Влияет на приёмы пищи, готовку и закупки');
   document.getElementById('remMeal').style.display =

@@ -20,7 +20,12 @@ if DEV: ADMINS.add(0)
 
 MEALS = ["Завтрак", "Обед", "Полдник", "Ужин", "Второй ужин"]
 TIMINGS = ["до еды", "во время еды", "после еды"]
-KINDS = ["meal", "shopping", "morning", "evening"]
+KINDS = ["meal", "shopping", "morning", "evening", "menu"]
+
+def _clean_note(note):
+    """Обрезанные заголовки рецептов из файла («Овсяная каша без глютена:») не показываем."""
+    note = (note or "").strip()
+    return note if note and not note.endswith(":") else None
 
 def me(x_init_data: str | None):
     if DEV: return {"id": 0, "first_name": "dev"}
@@ -48,7 +53,7 @@ def today(day: int = 0, x_init_data: str = Header(None)):
     meals: dict = {}
     for r in items:
         m = meals.setdefault(r["meal"], {"meal": r["meal"], "optional": r["optional"],
-                                         "note": r["note"], "swapped": 0, "items": []})
+                                         "note": _clean_note(r["note"]), "swapped": 0, "items": []})
         m["swapped"] = m["swapped"] or (1 if r.get("swapped") else 0)
         m["items"].append({"name": r["name"], "qty_min": r["qty_min"],
                            "qty_max": r["qty_max"], "unit": r["unit"], "url": r["url"],
@@ -257,6 +262,81 @@ def plan_save_generated(payload: dict, x_init_data: str = Header(None)):
     con.commit()
     return {"ok": True, "plan_id": pid, "title": title}
 
+# ---------- импорт плана через ИИ ----------
+
+@app.post("/api/plans/import")
+async def plan_import(payload: dict, x_init_data: str = Header(None)):
+    """План из файла (PDF/Word/Excel/текст, base64) или вставленного текста.
+    Текст извлекаем сами, структуру дней и приёмов разбирает Claude."""
+    import base64
+    from app.import_ai import extract_text, parse_plan, parse_plan_image, image_media_type
+    uid = me(x_init_data)["id"]
+    if not ai.ANTHROPIC_KEY:
+        raise HTTPException(503, "распознавание не подключено (нет ANTHROPIC_API_KEY)")
+    text = str(payload.get("text") or "").strip()
+    fname = str(payload.get("filename") or "")[:120]
+    media = image_media_type(fname) if payload.get("data_b64") else None
+    if not text and not media and payload.get("data_b64"):
+        try:
+            raw = base64.b64decode(payload["data_b64"])
+        except Exception:
+            raise HTTPException(400, "файл не дошёл целиком — попробуй ещё раз")
+        if len(raw) > 15_000_000:
+            raise HTTPException(400, "файл слишком большой (до 15 МБ)")
+        try:
+            text = extract_text(fname, raw).strip()
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            raise HTTPException(400, f"не смог прочитать файл: {e}")
+    if not media and len(text) < 40:
+        raise HTTPException(400, "в документе не нашлось текста плана")
+    try:
+        if media:
+            if len(payload["data_b64"]) > 6_500_000:
+                raise ValueError("фото слишком большое — пришли поменьше")
+            parsed = await parse_plan_image(payload["data_b64"], media)
+        else:
+            parsed = await parse_plan(text)
+    except Exception as e:
+        raise HTTPException(422, f"ИИ не смог разобрать план: {e}")
+    days = parsed.get("days") or []
+    title = str(parsed.get("title") or "").strip()[:80] \
+        or (fname.rsplit(".", 1)[0] if fname else f"План от {date.today().strftime('%d.%m')}")
+    def num(v):
+        try: return float(v)
+        except (TypeError, ValueError): return None
+    con = connect()
+    cur = con.execute("INSERT INTO plans(title,source_file,raw_json,active,user_id)"
+                      " VALUES(?,?,?,0,?)",
+                      (title, fname or "text", json.dumps(parsed, ensure_ascii=False)[:200000], uid))
+    pid = cur.lastrowid
+    saved = 0
+    for di, d in enumerate(days[:7]):
+        day_name = str(d.get("day") or DAY_NAMES_FULL[di])[:20]
+        for mi, m in enumerate((d.get("meals") or [])[:6]):
+            meal = str(m.get("meal") or "")[:30]
+            if meal not in MEALS: continue
+            note = str(m.get("note") or "").strip()[:300] or None
+            for it in (m.get("items") or [])[:15]:
+                name = str(it.get("name") or "").strip()[:120]
+                if not name: continue
+                con.execute(
+                    "INSERT INTO plan_items(plan_id,day_index,day_name,meal,meal_index,"
+                    "optional,name,qty_min,qty_max,unit,note) VALUES(?,?,?,?,?,?,?,?,?,?,?)",
+                    (pid, di, day_name, meal, mi, int(bool(m.get("optional"))),
+                     name, num(it.get("qty_min")), num(it.get("qty_max")),
+                     str(it.get("unit") or "")[:10] or None, note))
+                saved += 1
+                note = None          # примечание достаточно хранить у первой позиции
+    if not saved:
+        con.execute("DELETE FROM plans WHERE id=?", (pid,))
+        con.commit()
+        raise HTTPException(422, "ИИ не нашёл в документе ни одного блюда")
+    set_current_plan(con, uid, pid)
+    con.commit()
+    return {"ok": True, "plan_id": pid, "title": title, "days": min(len(days), 7)}
+
 # ---------- «не хочу это» — замена приёма пищи ----------
 # Приём заменяется целиком на такой же приём из другого дня/плана,
 # чтобы состав и граммовки диетолога не перемешивались.
@@ -353,7 +433,8 @@ async def ai_chat(payload: dict, x_init_data: str = Header(None)):
         raise HTTPException(502, f"не получилось спросить: {e}")
     if not answer:
         raise HTTPException(502, "помощник промолчал — попробуй переформулировать")
-    return {"answer": answer}
+    text, recipe = ai.split_recipe(answer)
+    return {"answer": text, "recipe": recipe}
 
 # ---------- напоминания ----------
 

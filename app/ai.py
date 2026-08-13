@@ -3,7 +3,7 @@
 Контекст — актуальный план пользователя, состав блюд и КБЖУ; сам вызов —
 Claude API (ключ ANTHROPIC_API_KEY в .env, без него функция выключена).
 """
-import os
+import os, re, json
 from datetime import date
 from app.db import connect, current_plan, persons_of, day_items
 from app.cooking import _resolve
@@ -26,8 +26,34 @@ AI_SYSTEM = (
     "Ты не врач: не ставь диагнозы и не назначай лечение или дозировки лекарств. При "
     "симптомах болезни, тревожных признаках или вопросах о серьёзных состояниях "
     "советуй обратиться к врачу или своему диетологу. Если данных не хватает — "
-    "честно скажи об этом."
+    "честно скажи об этом.\n"
+    "Если пользователь просит найти или придумать рецепт — дай один конкретный рецепт "
+    "(ингредиенты с количествами и шаги) в духе его плана. В самом конце такого ответа "
+    "добавь отдельной строкой служебный блок строго одной строкой:\n"
+    'RECIPE_JSON: {"title": "Название", "ingredients": ["Мука рисовая — 100 г"], '
+    '"steps": ["Смешать", "Выпекать 20 минут"]}\n'
+    "Блок добавляй только когда в ответе есть конкретный рецепт, не упоминай его в тексте."
 )
+
+RECIPE_RE = re.compile(r"RECIPE_JSON:\s*(\{.*\})\s*$", re.S)
+
+
+def split_recipe(answer):
+    """Отделяет служебный RECIPE_JSON от текста ответа. -> (текст, рецепт|None)"""
+    m = RECIPE_RE.search(answer or "")
+    if not m:
+        return answer, None
+    text = (answer[:m.start()]).rstrip()
+    try:
+        r = json.loads(m.group(1))
+        title = str(r.get("title") or "").strip()[:120]
+        ings = [str(s).strip()[:200] for s in (r.get("ingredients") or []) if str(s).strip()]
+        steps = [str(s).strip()[:500] for s in (r.get("steps") or []) if str(s).strip()]
+        if title and (ings or steps):
+            return text, {"title": title, "ingredients": ings, "steps": steps}
+    except Exception:
+        pass
+    return text, None
 
 
 def ai_context(uid):
@@ -91,7 +117,7 @@ def ai_context(uid):
     return "\n\n".join(parts)[:8000]
 
 
-async def ask_claude(system, messages):
+async def ask_claude(system, messages, max_tokens=900, timeout=60):
     import aiohttp
     async with aiohttp.ClientSession() as s:
         async with s.post(
@@ -99,9 +125,9 @@ async def ask_claude(system, messages):
                 headers={"x-api-key": ANTHROPIC_KEY,
                          "anthropic-version": "2023-06-01",
                          "content-type": "application/json"},
-                json={"model": AI_MODEL, "max_tokens": 900,
+                json={"model": AI_MODEL, "max_tokens": max_tokens,
                       "system": system, "messages": messages},
-                timeout=aiohttp.ClientTimeout(total=60)) as r:
+                timeout=aiohttp.ClientTimeout(total=timeout)) as r:
             data = await r.json()
             if r.status != 200:
                 raise RuntimeError(data.get("error", {}).get("message", "HTTP %s" % r.status))
