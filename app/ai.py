@@ -117,7 +117,7 @@ def ai_context(uid):
     return "\n\n".join(parts)[:8000]
 
 
-async def ask_claude(system, messages, max_tokens=900, timeout=60):
+async def ask_claude(system, messages, max_tokens=1400, timeout=60):
     import aiohttp
     async with aiohttp.ClientSession() as s:
         async with s.post(
