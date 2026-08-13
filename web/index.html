@@ -307,13 +307,18 @@ body.tg{padding:0;background:var(--bg);
     <div style="height:58px"></div>   <!-- место под поле ввода -->
   </div>
 
-  <!-- ===== ПРОФИЛЬ ===== -->
+  <!-- ===== ПРОФИЛЬ: хаб ===== -->
   <div class="scr" id="s-me">
     <div class="sect">Порции</div>
     <div id="persMe"></div>
     <div class="note blue"><span class="ic">👥</span>
       <div>План рассчитан на одного. При увеличении все веса, закупки и готовка умножаются.</div></div>
-    <div class="sect">Планы</div>
+    <div class="sect">Настройки</div>
+    <div class="card" id="hubCard"><div class="empty">Загрузка…</div></div>
+  </div>
+
+  <!-- ===== ПЛАНЫ (подэкран) ===== -->
+  <div class="scr" id="s-plans">
     <div class="card" id="myPlans"><div class="empty">Загрузка…</div></div>
     <div class="card"><button class="btn gh add-toggle" id="genBtn" onclick="genMenu()">🎲 Сгенерировать меню на неделю</button></div>
     <div id="genPreview" style="display:none"></div>
@@ -330,12 +335,10 @@ body.tg{padding:0;background:var(--bg);
           Обычно занимает до минуты.</div>
       </div></div>
     </div>
+  </div>
 
-    <div class="sect">Рецепты</div>
-    <div class="card"><button class="btn gh add-toggle"
-      onclick="push('recipes','Рецепты','Свои рецепты для блюд плана')">📖 Мои рецепты</button></div>
-
-    <div class="sect">Напоминания</div>
+  <!-- ===== НАПОМИНАНИЯ (подэкран) ===== -->
+  <div class="scr" id="s-rem">
     <div class="card" id="remList"><div class="empty">Загрузка…</div></div>
     <div class="card"><button class="btn gh add-toggle" id="remAddBtn"
       onclick="toggleAdd('remFormWrap','remAddBtn','+ Добавить напоминание')">+ Добавить напоминание</button></div>
@@ -361,7 +364,10 @@ body.tg{padding:0;background:var(--bg);
       </div></div>
     </div>
 
-    <div class="sect">БАДы и добавки</div>
+  </div>
+
+  <!-- ===== БАДЫ (подэкран) ===== -->
+  <div class="scr" id="s-sup">
     <div class="card" id="supList"><div class="empty">Загрузка…</div></div>
     <div class="card"><button class="btn gh add-toggle" id="supAddBtn"
       onclick="toggleAdd('supFormWrap','supAddBtn','+ Добавить БАД')">+ Добавить БАД</button></div>
@@ -499,7 +505,8 @@ function titles() {
   };
 }
 const RENDER = {today: renderToday, cook: renderCook, mode: renderMode, ai: renderAi,
-                week: renderWeek, shop: renderShop, me: renderMe, recipes: renderRecipes};
+                week: renderWeek, shop: renderShop, me: renderMe, recipes: renderRecipes,
+                plans: renderPlans, rem: renderRem, sup: renderSup};
 function go(tab, btn) {
   nav = {tab, stack: []};
   [...document.querySelectorAll('.tabs button')].forEach(b => b.classList.remove('on'));
@@ -1122,7 +1129,7 @@ async function importPlan() {
     document.getElementById('impFile').value = '';
     document.getElementById('impText').value = '';
     closeAdd('impFormWrap', 'impBtn', '➕ Добавить план — файл или текст');
-    resetCaches(); renderMe();
+    resetCaches(); renderPlans();
     toast(`«${r.title}» добавлен (${r.days} дн.) и выбран текущим`);
   } catch (e) { toast(e.message); }
   btn.disabled = false; btn.textContent = 'Распознать через ИИ и сохранить';
@@ -1163,7 +1170,7 @@ async function saveGen() {
   try { r = await api('/api/plans/save_generated', {method: 'POST',
     headers: {'Content-Type': 'application/json'}, body: JSON.stringify(genData)}); }
   catch (e) { return toast(e.message); }
-  cancelGen(); renderMe();
+  cancelGen(); renderPlans();
   toast(`«${r.title}» сохранён — выбери его в списке, когда захочешь`);
 }
 function cancelGen() {
@@ -1182,17 +1189,41 @@ const KIND_LABEL = {meal: '', menu: 'Меню на день', shopping: 'Зак�
                     morning: 'Что взять с собой', evening: 'Подготовка на завтра'};
 async function renderMe() {
   document.getElementById('persMe').innerHTML = persBar('Влияет на приёмы пищи, готовку и закупки');
-  document.getElementById('remMeal').style.display =
-    document.getElementById('remKind').value === 'meal' ? '' : 'none';
   let p, rem, sup;
   try {
     [p, rem, sup] = await Promise.all([api('/api/plans'), api('/api/reminders'), api('/api/supplements')]);
   } catch (e) {
-    document.getElementById('myPlans').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    document.getElementById('hubCard').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
     return;
   }
   supData = sup.supplements;
+  const cur = p.plans.find(x => x.active);
+  const curT = cur ? cur.title.replace(/\.(docx|txt)$/i, '').replace(/^План питания\s*/i, '') : 'не выбран';
+  const row = (ic, t, sub, go) =>
+    `<div class="chk" style="align-items:center" onclick="${go}">
+      <span style="font-size:20px;width:26px;text-align:center;flex:0 0 auto">${ic}</span>
+      <span class="lbl">${t}<span class="meta">${esc(sub)}</span></span>
+      <span style="color:var(--ink3);font-size:18px;line-height:1">›</span>
+    </div>`;
+  document.getElementById('hubCard').innerHTML =
+    row('📋', 'Планы', 'текущий: ' + curT,
+        `push('plans','Планы','Выбрать, сгенерировать или добавить')`) +
+    row('⏰', 'Напоминания',
+        rem.reminders.length ? `включено: ${rem.reminders.length}` : 'пока не настроены',
+        `push('rem','Напоминания','Бот напишет в чат в это время')`) +
+    row('💊', 'БАДы и добавки',
+        supData.length ? `в списке: ${supData.length}` : 'пока не добавлены',
+        `push('sup','БАДы и добавки','Покажутся в своём приёме пищи')`) +
+    row('📖', 'Мои рецепты', 'свои рецепты для блюд плана',
+        `push('recipes','Рецепты','Свои рецепты для блюд плана')`);
+}
 
+async function renderPlans() {
+  let p;
+  try { p = await api('/api/plans'); } catch (e) {
+    document.getElementById('myPlans').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    return;
+  }
   const row = x => `<div class="chk" style="cursor:default">
       <span class="lbl">${esc(x.title.replace(/\.(docx|txt)$/i, ''))}
         <span class="meta">${x.days} дн. · ${x.shared ? 'общий план' : 'загружен ' + esc((x.created_at || '').slice(0, 10))}</span></span>
@@ -1204,8 +1235,17 @@ async function renderMe() {
   document.getElementById('myPlans').innerHTML =
     (mine.length ? `<div class="grp">Мои</div>` + mine.map(row).join('') : '') +
     (shared.length ? `<div class="grp">Общие — доступны всем</div>` + shared.map(row).join('') : '') ||
-    '<div class="empty">Планов пока нет — пришли боту файл от диетолога.</div>';
+    '<div class="empty">Планов пока нет — добавь ниже или пришли боту файл.</div>';
+}
 
+async function renderRem() {
+  document.getElementById('remMeal').style.display =
+    document.getElementById('remKind').value === 'meal' ? '' : 'none';
+  let rem;
+  try { rem = await api('/api/reminders'); } catch (e) {
+    document.getElementById('remList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    return;
+  }
   document.getElementById('remList').innerHTML = rem.reminders.map(r =>
     `<div class="chk" style="cursor:default">
       <span class="lbl">${r.kind === 'meal' ? esc(r.meal || '') : esc(KIND_LABEL[r.kind] || r.kind)}
@@ -1214,7 +1254,15 @@ async function renderMe() {
       <button class="btn" style="padding:4px 9px;font-size:12px;color:var(--red)" onclick="delReminder(${r.id})">Удалить</button>
     </div>`).join('') ||
     '<div class="empty">Напоминаний нет — добавь ниже, бот напишет в чат в это время.</div>';
+}
 
+async function renderSup() {
+  let sup;
+  try { sup = await api('/api/supplements'); } catch (e) {
+    document.getElementById('supList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    return;
+  }
+  supData = sup.supplements;
   document.getElementById('supList').innerHTML = supData.map(s =>
     `<div class="chk" style="cursor:default">
       <span class="lbl">💊 ${esc(s.name)}${s.dose ? ' — ' + esc(s.dose) : ''}
@@ -1225,12 +1273,12 @@ async function renderMe() {
 }
 async function activatePlan(id) {
   try { await api('/api/plans/activate?id=' + id, {method: 'POST'}); } catch (e) { return toast(e.message); }
-  resetCaches(); renderMe(); toast('План выбран текущим');
+  resetCaches(); renderPlans(); toast('План выбран текущим');
 }
 function delPlan(id) {
   ask('Удалить план вместе с его отметками?', async () => {
     try { await api('/api/plans/delete?id=' + id, {method: 'POST'}); } catch (e) { return toast(e.message); }
-    resetCaches(); renderMe(); toast('План удалён');
+    resetCaches(); renderPlans(); toast('План удалён');
   });
 }
 async function addReminder() {
@@ -1243,11 +1291,11 @@ async function addReminder() {
               + (kind === 'meal' ? `&meal=${encodeURIComponent(meal)}` : ''), {method: 'POST'});
   } catch (e) { return toast(e.message); }
   closeAdd('remFormWrap', 'remAddBtn', '+ Добавить напоминание');
-  renderMe(); toast('Напоминание добавлено');
+  renderRem(); toast('Напоминание добавлено');
 }
 async function delReminder(id) {
   try { await api('/api/reminders/delete?id=' + id, {method: 'POST'}); } catch (e) { return toast(e.message); }
-  renderMe(); toast('Напоминание удалено');
+  renderRem(); toast('Напоминание удалено');
 }
 async function addSup() {
   const name = document.getElementById('supName').value.trim(),
@@ -1262,11 +1310,11 @@ async function addSup() {
   document.getElementById('supName').value = '';
   document.getElementById('supDose').value = '';
   closeAdd('supFormWrap', 'supAddBtn', '+ Добавить БАД');
-  supData = null; renderMe(); toast('Добавка сохранена');
+  renderSup(); toast('Добавка сохранена');
 }
 async function delSup(id) {
   try { await api('/api/supplements/delete?id=' + id, {method: 'POST'}); } catch (e) { return toast(e.message); }
-  supData = null; renderMe(); toast('Добавка удалена');
+  renderSup(); toast('Добавка удалена');
 }
 
 /* ---------- toast ---------- */
