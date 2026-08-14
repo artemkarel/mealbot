@@ -2,6 +2,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>План питания</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="https://st.max.ru/js/max-web-app.js"></script>
 <style>
 :root{
   --bg:#ECEEEA; --card:#fff; --ink:#16191A; --ink2:#6E7671; --ink3:#9AA19C;
@@ -483,6 +484,15 @@ body.tg{padding:0;background:var(--bg);
 <script>
 /* ---------- API ---------- */
 const tg = window.Telegram && window.Telegram.WebApp;
+// мини-приложение внутри мессенджера MAX (MAX Bridge даёт window.WebApp)
+const maxApp = (!tg || !tg.initData) && window.WebApp && window.WebApp.initData
+  ? window.WebApp : null;
+if (maxApp) {
+  document.body.classList.add('tg');            // тот же цельный лист без рамки
+  if (maxApp.BackButton) {
+    maxApp.BackButton.onClick(() => { if (nav.stack.length) back(); });
+  }
+}
 if (tg) {
   tg.ready(); tg.expand();
   if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();  // свайп вниз не закрывает приложение
@@ -501,7 +511,8 @@ if (tg) {
 }
 async function api(path, opts = {}) {
   const r = await fetch(path, {...opts,
-    headers: {'X-Init-Data': (tg && tg.initData) || '', ...(opts.headers || {})}});
+    headers: {'X-Init-Data': (tg && tg.initData)
+      || (maxApp ? 'max ' + maxApp.initData : ''), ...(opts.headers || {})}});
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
     throw new Error(e.detail || ('Ошибка ' + r.status));
@@ -1441,8 +1452,8 @@ async function renderUsers() {
     return `<div class="chk" style="cursor:default">
       <span class="lbl">${esc(name)}${x.username ? ` <span class="link" style="border:0">@${esc(x.username)}</span>` : ''}
         ${x.user_id === u.me ? '<span class="tag">ты</span>' : ''}
-        <span class="meta">id ${x.user_id} · планов: ${x.plans} · напоминаний: ${x.rems}
-          · был(а): ${esc(seen)}${x.source ? ' · ' + (x.source === 'bot' ? 'бот' : 'приложение') : ''}</span></span>
+        <span class="meta">${x.platform || 'TG'} · id ${x.pid ?? x.user_id} · планов: ${x.plans}
+          · напоминаний: ${x.rems} · был(а): ${esc(seen)}</span></span>
     </div>`;
   }).join('') || '<div class="empty">Пока пусто — список наполнится по мере визитов.</div>';
 }

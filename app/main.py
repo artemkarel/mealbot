@@ -5,7 +5,7 @@ from datetime import date
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
 from app.db import (connect, init, current_plan, persons_of, set_current_plan,
-                    set_persons, day_items, touch_user)
+                    set_persons, day_items, touch_user, MAX_UID_OFFSET)
 from app.cooking import cook_plan, same_days
 from app.macros import day_macros
 from app.shopping import build as build_shopping
@@ -29,7 +29,18 @@ def _clean_note(note):
 
 def me(x_init_data: str | None):
     if DEV: return {"id": 0, "first_name": "dev"}
-    user = auth.check(x_init_data or "")
+    raw = x_init_data or ""
+    if raw.startswith("max "):                    # мини-приложение внутри MAX
+        user = auth.check_max(raw[4:])
+        if not user: raise HTTPException(401, "нет доступа")
+        uid = MAX_UID_OFFSET + int(user["id"])
+        try:
+            touch_user(connect(), uid, user.get("first_name") or user.get("name"),
+                       user.get("last_name"), user.get("username"), "max-app")
+        except Exception:
+            pass
+        return {**user, "id": uid}
+    user = auth.check(raw)
     if not user: raise HTTPException(401, "нет доступа")
     try:
         touch_user(connect(), user["id"], user.get("first_name"),
@@ -158,6 +169,9 @@ def users_list(x_init_data: str = Header(None)):
                      "rems": con.execute("SELECT COUNT(*) c FROM user_reminders"
                                          " WHERE user_id=? AND enabled=1",
                                          (r["user_id"],)).fetchone()["c"]})
+    for r in rows:
+        r["platform"] = "MAX" if r["user_id"] >= MAX_UID_OFFSET else "TG"
+        r["pid"] = r["user_id"] - MAX_UID_OFFSET if r["user_id"] >= MAX_UID_OFFSET else r["user_id"]
     return {"users": rows, "me": uid}
 
 # ---------- о себе: пол/рост/вес и здоровье ----------

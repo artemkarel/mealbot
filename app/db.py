@@ -3,6 +3,7 @@ import sqlite3, os, json
 from pathlib import Path
 
 DB_PATH = Path(os.getenv("DB_PATH", "data/mealplan.db"))
+MAX_UID_OFFSET = 2_000_000_000_000   # id пользователей MAX — без пересечений с Telegram
 
 def connect():
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
