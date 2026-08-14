@@ -32,7 +32,7 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .hdr .sub{color:var(--ink2);font-size:13px;margin-top:2px}
 .days{display:flex;gap:6px;margin-top:12px;overflow-x:auto;scrollbar-width:none;justify-content:center}
 .days::-webkit-scrollbar{display:none}
-.day{flex:0 0 auto;width:42px;text-align:center;padding:6px 0;border-radius:10px;border:1px solid var(--line);
+.day{flex:1 1 0;min-width:0;text-align:center;padding:6px 0;border-radius:10px;border:1px solid var(--line);
   background:#fff;cursor:pointer;font-size:11px;color:var(--ink2)}
 .day b{display:block;font-size:15px;color:var(--ink);font-weight:600}
 .day.on{background:var(--accent);border-color:var(--accent);color:#CFE3D6}
@@ -168,11 +168,10 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .tabs button.on{color:var(--accent);font-weight:600}
 #tabInd{position:absolute;top:0;height:3px;background:var(--accent);border-radius:0 0 3px 3px;
   transition:left .28s ease,width .28s ease;left:0;width:0}
-/* Диетолог — главная вкладка: кружок-акцент и точка «онлайн» */
+/* Диетолог — главная вкладка: акцентный цвет и точка «онлайн» */
 .tabs button.ai-tab{color:var(--accent)}
-.tabs button.ai-tab .i{width:30px;height:30px;background:var(--accent-bg);border-radius:50%;
-  display:flex;align-items:center;justify-content:center;font-size:16px;position:relative}
-.tabs button.ai-tab .i::after{content:'';position:absolute;right:-1px;top:-1px;width:9px;height:9px;
+.tabs button.ai-tab .i{position:relative}
+.tabs button.ai-tab .i::after{content:'';position:absolute;right:-5px;top:-2px;width:8px;height:8px;
   border-radius:50%;background:#43B97F;border:2px solid var(--card)}
 .add-toggle{width:100%;justify-content:center;border:0;padding:12px;font-size:13.5px;color:var(--accent)}
 .tag.rcp{background:none;color:var(--accent);opacity:.55;cursor:pointer;border:0;font-family:inherit;
@@ -265,7 +264,6 @@ body.tg{padding:0;background:var(--bg);
   <!-- ===== СЕГОДНЯ ===== -->
   <div class="scr" id="s-today">
     <div id="macroCard"></div>
-    <div id="prepNotes"></div>
     <div class="sect">Приёмы пищи</div>
     <div id="meals"><div class="empty">Загрузка…</div></div>
     <div class="sect">Готовка</div>
@@ -654,7 +652,10 @@ function paint() {
   const T = titles();
   document.getElementById('hTitle').textContent = cur ? cur.title : T[nav.tab][0];
   document.getElementById('hSub').textContent = cur ? cur.sub : T[nav.tab][1];
-  document.getElementById('dayStrip').style.display = (!cur && nav.tab === 'today') ? 'flex' : 'none';
+  const todayRoot = !cur && nav.tab === 'today';
+  document.getElementById('dayStrip').style.display = todayRoot ? 'flex' : 'none';
+  // на «Сегодня» заголовок лишний — день и так виден в ленте дней
+  document.querySelector('.hdr-top').style.display = todayRoot ? 'none' : 'flex';
   document.getElementById('aiBar').classList.toggle('on', !cur && nav.tab === 'ai');
   window.scrollTo(0, 0);
   (RENDER[id] || (() => {}))();
@@ -690,15 +691,6 @@ async function renderToday() {
     return;
   }
   renderDays();
-  const T = titles();
-  if (!nav.stack.length && nav.tab === 'today') {
-    document.getElementById('hTitle').textContent = T.today[0];
-    document.getElementById('hSub').textContent = T.today[1];
-  }
-
-  document.getElementById('prepNotes').innerHTML = t.prep.map(p =>
-    `<div class="note amber"><span class="ic">🌙</span><div><b>Подготовить заранее</b><br>${esc(p.text)}</div></div>`).join('');
-
   if (supData === null) {
     try { supData = (await api('/api/supplements')).supplements; } catch (e) { supData = []; }
   }
@@ -776,7 +768,6 @@ function macroCard(mac) {
       <div class="t2 num"><span class="dot" style="background:var(--accent)"></span>Белки ${t.prot} г
         <span class="dot" style="background:var(--amber);margin-left:8px"></span>Жиры ${t.fat} г
         <span class="dot" style="background:var(--blue);margin-left:8px"></span>Угл. ${t.carb} г</div>
-      <div class="t3">на одного, примерно по справочнику блюд</div>
     </div></div>`;
 }
 
