@@ -45,6 +45,20 @@ def current_plan(con, uid: int):
                        " ORDER BY id DESC LIMIT 1").fetchone()
 
 
+def touch_user(con, uid: int, first_name=None, last_name=None, username=None, source=None):
+    """Отмечает пользователя как живого — для списка «кто пользуется» у админа."""
+    con.execute(
+        "INSERT INTO users(user_id, first_name, last_name, username, last_seen, source)"
+        " VALUES(?,?,?,?,datetime('now'),?)"
+        " ON CONFLICT(user_id) DO UPDATE SET"
+        " first_name=COALESCE(excluded.first_name, first_name),"
+        " last_name=COALESCE(excluded.last_name, last_name),"
+        " username=COALESCE(excluded.username, username),"
+        " last_seen=excluded.last_seen, source=excluded.source",
+        (uid, first_name, last_name, username, source))
+    con.commit()
+
+
 def day_items(con, uid: int, plan_id: int, day: int):
     """Позиции дня плана с учётом замен пользователя (meal_overrides).
     Заменённый приём подставляется целиком, у его позиций swapped=1."""

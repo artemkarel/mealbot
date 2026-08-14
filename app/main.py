@@ -5,7 +5,7 @@ from datetime import date
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
 from app.db import (connect, init, current_plan, persons_of, set_current_plan,
-                    set_persons, day_items)
+                    set_persons, day_items, touch_user)
 from app.cooking import cook_plan, same_days
 from app.macros import day_macros
 from app.shopping import build as build_shopping
@@ -31,6 +31,11 @@ def me(x_init_data: str | None):
     if DEV: return {"id": 0, "first_name": "dev"}
     user = auth.check(x_init_data or "")
     if not user: raise HTTPException(401, "нет доступа")
+    try:
+        touch_user(connect(), user["id"], user.get("first_name"),
+                   user.get("last_name"), user.get("username"), "app")
+    except Exception:
+        pass
     return user
 
 def active_plan(con, uid: int):
@@ -128,6 +133,33 @@ def persons(n: int, x_init_data: str = Header(None)):
     set_persons(con, uid, max(1, min(8, n)))
     con.commit(); return {"persons": n}
 
+# ---------- пользователи (только админ) ----------
+# Имя и username Telegram и так присылает боту; здоровье и анкеты сюда не попадают.
+
+@app.get("/api/users")
+def users_list(x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    if uid not in ADMINS: raise HTTPException(403, "только для админа")
+    con = connect()
+    rows = [dict(r) for r in con.execute(
+        "SELECT u.user_id, u.first_name, u.last_name, u.username,"
+        " u.first_seen, u.last_seen, u.source,"
+        " (SELECT COUNT(*) FROM plans p WHERE p.user_id = u.user_id) plans,"
+        " (SELECT COUNT(*) FROM user_reminders r WHERE r.user_id = u.user_id AND r.enabled=1) rems"
+        " FROM users u ORDER BY u.last_seen DESC")]
+    known = {r["user_id"] for r in rows}
+    # пользователи, замеченные до появления учёта — без имён, но со статистикой
+    for r in con.execute("SELECT DISTINCT user_id FROM user_prefs WHERE user_id IS NOT NULL"):
+        if r["user_id"] in known or r["user_id"] == 0: continue
+        rows.append({"user_id": r["user_id"], "first_name": None, "last_name": None,
+                     "username": None, "first_seen": None, "last_seen": None, "source": None,
+                     "plans": con.execute("SELECT COUNT(*) c FROM plans WHERE user_id=?",
+                                          (r["user_id"],)).fetchone()["c"],
+                     "rems": con.execute("SELECT COUNT(*) c FROM user_reminders"
+                                         " WHERE user_id=? AND enabled=1",
+                                         (r["user_id"],)).fetchone()["c"]})
+    return {"users": rows, "me": uid}
+
 # ---------- о себе: пол/рост/вес и здоровье ----------
 # Данные видны только владельцу и используются только ИИ-диетологом.
 
@@ -138,7 +170,8 @@ def profile_get(x_init_data: str = Header(None)):
     r = con.execute("SELECT sex, height, weight, health FROM user_prefs WHERE user_id=?",
                     (uid,)).fetchone()
     return {"sex": r["sex"] if r else None, "height": r["height"] if r else None,
-            "weight": r["weight"] if r else None, "health": r["health"] if r else None}
+            "weight": r["weight"] if r else None, "health": r["health"] if r else None,
+            "admin": uid in ADMINS}
 
 @app.post("/api/profile")
 def profile_set(payload: dict, x_init_data: str = Header(None)):

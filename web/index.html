@@ -342,6 +342,14 @@ body.tg{padding:0;background:var(--bg);
     <div style="height:58px"></div>   <!-- место под поле ввода -->
   </div>
 
+  <!-- ===== ПОЛЬЗОВАТЕЛИ (подэкран, только админ) ===== -->
+  <div class="scr" id="s-users">
+    <div class="card" id="usersList"><div class="empty">Загрузка…</div></div>
+    <div class="note blue"><span class="ic">👥</span>
+      <div>Имя и username Telegram присылает сам. Анкеты «О себе» и переписка
+        с диетологом сюда не попадают — они видны только владельцам.</div></div>
+  </div>
+
   <!-- ===== О СЕБЕ (подэкран) ===== -->
   <div class="scr" id="s-health">
     <div class="card"><div class="frm">
@@ -562,7 +570,8 @@ function titles() {
 }
 const RENDER = {today: renderToday, cook: renderCook, mode: renderMode, ai: renderAi,
                 week: renderWeek, shop: renderShop, me: renderMe, recipes: renderRecipes,
-                plans: renderPlans, rem: renderRem, sup: renderSup, health: renderHealth};
+                plans: renderPlans, rem: renderRem, sup: renderSup, health: renderHealth,
+                users: renderUsers};
 const TAB_ORDER = ['today', 'week', 'ai', 'shop', 'me'];
 function moveTabInd(btn) {
   const el = document.getElementById('tabInd');
@@ -1383,9 +1392,10 @@ const KIND_LABEL = {meal: '', menu: 'Меню на день', shopping: 'Зак�
                     morning: 'Что взять с собой', evening: 'Подготовка на завтра'};
 async function renderMe() {
   document.getElementById('persMe').innerHTML = persBar('Влияет на приёмы пищи, готовку и закупки');
-  let p, rem, sup;
+  let p, rem, sup, prof;
   try {
-    [p, rem, sup] = await Promise.all([api('/api/plans'), api('/api/reminders'), api('/api/supplements')]);
+    [p, rem, sup, prof] = await Promise.all([api('/api/plans'), api('/api/reminders'),
+                                             api('/api/supplements'), api('/api/profile')]);
   } catch (e) {
     document.getElementById('hubCard').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
     return;
@@ -1411,7 +1421,30 @@ async function renderMe() {
     row('🩺', 'О себе', 'пол, рост, вес и здоровье — для диетолога',
         `push('health','О себе','Диетолог учитывает это в советах')`) +
     row('📖', 'Мои рецепты', 'свои рецепты для блюд плана',
-        `push('recipes','Рецепты','Свои рецепты для блюд плана')`);
+        `push('recipes','Рецепты','Свои рецепты для блюд плана')`) +
+    (prof.admin ? row('👥', 'Пользователи', 'кто пользуется приложением',
+        `push('users','Пользователи','Кто заходил в бота и приложение')`) : '');
+}
+
+async function renderUsers() {
+  let u;
+  try { u = await api('/api/users'); } catch (e) {
+    document.getElementById('usersList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    return;
+  }
+  const today = new Date().toISOString().slice(0, 10);
+  document.getElementById('usersList').innerHTML = u.users.map(x => {
+    const name = [x.first_name, x.last_name].filter(Boolean).join(' ') || 'Без имени';
+    const seen = !x.last_seen ? 'давно'
+      : x.last_seen.slice(0, 10) === today ? 'сегодня в ' + x.last_seen.slice(11, 16)
+      : x.last_seen.slice(0, 10);
+    return `<div class="chk" style="cursor:default">
+      <span class="lbl">${esc(name)}${x.username ? ` <span class="link" style="border:0">@${esc(x.username)}</span>` : ''}
+        ${x.user_id === u.me ? '<span class="tag">ты</span>' : ''}
+        <span class="meta">id ${x.user_id} · планов: ${x.plans} · напоминаний: ${x.rems}
+          · был(а): ${esc(seen)}${x.source ? ' · ' + (x.source === 'bot' ? 'бот' : 'приложение') : ''}</span></span>
+    </div>`;
+  }).join('') || '<div class="empty">Пока пусто — список наполнится по мере визитов.</div>';
 }
 
 async function renderPlans() {

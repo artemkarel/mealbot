@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS user_places (            -- «где купить» �
   user_id INT, product TEXT, place TEXT,
   PRIMARY KEY (user_id, product));
 
+CREATE TABLE IF NOT EXISTS users (                  -- кто пользуется ботом/приложением
+  user_id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, username TEXT,
+  first_seen TEXT DEFAULT (datetime('now')), last_seen TEXT, source TEXT);
+
 CREATE TABLE IF NOT EXISTS meal_overrides (         -- «не хочу это» — замена приёма пищи
   user_id INT, plan_id INT, day_index INT, meal TEXT,
   items_json TEXT, created_at TEXT DEFAULT (datetime('now')),

@@ -12,7 +12,7 @@ from aiogram.filters import Command, CommandStart
 from aiogram.types import (Message, WebAppInfo, InlineKeyboardMarkup,
                            InlineKeyboardButton, BotCommand)
 from import_plan import save
-from app.db import connect, current_plan, persons_of, set_current_plan, day_items
+from app.db import connect, current_plan, persons_of, set_current_plan, day_items, touch_user
 from app.cooking import same_days
 from app.shopping import build as build_shopping
 from app.ai import ask_claude, ai_context, split_recipe, AI_SYSTEM, ANTHROPIC_KEY
@@ -72,7 +72,14 @@ async def reply_clean(m: Message, text, **kw):
 
 def allowed(m: Message) -> bool:
     """Пустой ALLOWED_USER_IDS = бот открыт для всех; данные у каждого свои."""
-    return not ALLOWED or m.from_user.id in ALLOWED
+    if ALLOWED and m.from_user.id not in ALLOWED:
+        return False
+    try:                                # отмечаем активность для списка «кто пользуется»
+        u = m.from_user
+        touch_user(connect(), u.id, u.first_name, u.last_name, u.username, "bot")
+    except Exception:
+        pass
+    return True
 
 
 def admin(m: Message) -> bool:
@@ -166,6 +173,23 @@ async def cmd_status(m: Message):
                    reply_markup=kb)
 
 
+async def cmd_users(m: Message):
+    if not admin(m): return
+    con = connect()
+    rows = con.execute(
+        "SELECT u.*, (SELECT COUNT(*) FROM plans p WHERE p.user_id = u.user_id) plans"
+        " FROM users u ORDER BY u.last_seen DESC LIMIT 30").fetchall()
+    if not rows:
+        return await reply_clean(m, "Пока никого не видно — список наполнится по мере визитов.")
+    lines = ["👥 Кто пользуется:"]
+    for r in rows:
+        name = " ".join(x for x in (r["first_name"], r["last_name"]) if x) or "Без имени"
+        if r["username"]: name += f" (@{r['username']})"
+        lines.append(f"• {name} — id {r['user_id']}, планов: {r['plans']},"
+                     f" был(а): {(r['last_seen'] or '')[:16]}")
+    await reply_clean(m, "\n".join(lines))
+
+
 async def cmd_version(m: Message):
     if not admin(m): return
     try:
@@ -204,6 +228,7 @@ BOT_COMMANDS = [
     BotCommand(command="tomorrow", description="Что завтра"),
     BotCommand(command="myid", description="Мой Telegram ID"),
     BotCommand(command="status", description="Состояние бота"),
+    BotCommand(command="users", description="Кто пользуется (для админа)"),
     BotCommand(command="version", description="Версия кода"),
     BotCommand(command="update", description="Обновить с GitHub"),
     BotCommand(command="restart", description="Перезапустить бота"),
@@ -424,6 +449,7 @@ async def main():
     dp.message.register(cmd_tomorrow, Command("tomorrow"))
     dp.message.register(cmd_myid, Command("myid"))
     dp.message.register(cmd_status, Command("status"))
+    dp.message.register(cmd_users, Command("users"))
     dp.message.register(cmd_version, Command("version"))
     dp.message.register(cmd_update, Command("update"))
     dp.message.register(cmd_restart, Command("restart"))
