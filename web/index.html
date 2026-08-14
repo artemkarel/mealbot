@@ -23,14 +23,15 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
   pointer-events:none;transform:translateX(-25%)}
 .num{font-variant-numeric:tabular-nums}
 
-.hdr{background:var(--card);padding:12px 14px 12px;border-bottom:1px solid var(--line);position:sticky;top:0;z-index:5}
-.hdr-top{display:flex;align-items:center;gap:10px}
-.back{border:0;background:none;padding:4px 6px 4px 0;font-size:22px;line-height:1;color:var(--accent);
+/* шапка без плашки: на корневых вкладках пустая, на подэкранах — крупный заголовок */
+.hdr{background:none;padding:10px 12px 0}
+.hdr-top{display:flex;align-items:center;gap:8px}
+.back{border:0;background:none;padding:4px 8px 4px 2px;font-size:24px;line-height:1;color:var(--accent);
   cursor:pointer;display:none;font-family:inherit}
 .back.on{display:block}
-.hdr h1{margin:0;font-size:17px;font-weight:600;letter-spacing:-.01em;flex:1}
-.hdr .sub{color:var(--ink2);font-size:13px;margin-top:2px}
-.days{display:flex;gap:6px;margin-top:12px;overflow-x:auto;scrollbar-width:none;justify-content:center}
+.hdr h1{margin:0;font-size:20px;font-weight:700;letter-spacing:-.02em;flex:1}
+.hdr .sub{color:var(--ink2);font-size:13px;margin-top:1px}
+.days{display:flex;gap:6px;margin-top:4px;overflow-x:auto;scrollbar-width:none;justify-content:center}
 .days::-webkit-scrollbar{display:none}
 .day{flex:1 1 0;min-width:0;text-align:center;padding:6px 0;border-radius:10px;border:1px solid var(--line);
   background:#fff;cursor:pointer;font-size:11px;color:var(--ink2)}
@@ -652,10 +653,9 @@ function paint() {
   const T = titles();
   document.getElementById('hTitle').textContent = cur ? cur.title : T[nav.tab][0];
   document.getElementById('hSub').textContent = cur ? cur.sub : T[nav.tab][1];
-  const todayRoot = !cur && nav.tab === 'today';
-  document.getElementById('dayStrip').style.display = todayRoot ? 'flex' : 'none';
-  // на «Сегодня» заголовок лишний — день и так виден в ленте дней
-  document.querySelector('.hdr-top').style.display = todayRoot ? 'none' : 'flex';
+  document.getElementById('dayStrip').style.display = (!cur && nav.tab === 'today') ? 'flex' : 'none';
+  // заголовок только на подэкранах — понятно, куда провалился; корневые вкладки без шапок
+  document.querySelector('.hdr-top').style.display = cur ? 'flex' : 'none';
   document.getElementById('aiBar').classList.toggle('on', !cur && nav.tab === 'ai');
   window.scrollTo(0, 0);
   (RENDER[id] || (() => {}))();
