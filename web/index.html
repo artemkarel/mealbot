@@ -636,13 +636,15 @@ document.addEventListener('touchmove', e => {
     if (!tg) { sw.dead = true; return; }
     sw.engaged = true; sw.tg = tg;
     sw.w = tg.from.clientWidth || innerWidth;
+    sw.hdr = document.querySelector('.hdr');           // шапка едет вместе с экраном
     tg.to.classList.add('under');
-    tg.to.style.top = document.querySelector('.hdr').offsetHeight + 'px';
+    tg.to.style.top = sw.hdr.offsetHeight + 'px';
     tg.from.classList.add('drag');
   }
   e.preventDefault();                                  // пока тянем — страницу не скроллим
   const d = Math.max(0, dx);
   sw.tg.from.style.transform = `translateX(${d}px)`;
+  sw.hdr.style.transform = `translateX(${d}px)`;
   sw.tg.to.style.transform = `translateX(${(-0.25 * sw.w + d / 4).toFixed(1)}px)`;
 }, {passive: false});
 document.addEventListener('touchend', e => {
@@ -655,13 +657,13 @@ document.addEventListener('touchend', e => {
         document.getElementById('sheetWrap').classList.contains('on')) closeSheet();
     return;
   }
-  const {from, to} = s.tg, w = s.w;
+  const {from, to} = s.tg, w = s.w, hdr = s.hdr;
   const done = dx > w * 0.33 || (dx > 70 && dt < 300);   // дотянул или резко смахнул
-  from.style.transition = to.style.transition = 'transform .2s ease';
-  from.style.transform = done ? `translateX(${w}px)` : 'translateX(0)';
+  from.style.transition = to.style.transition = hdr.style.transition = 'transform .2s ease';
+  from.style.transform = hdr.style.transform = done ? `translateX(${w}px)` : 'translateX(0)';
   to.style.transform = done ? 'translateX(0)' : `translateX(${(-0.25 * w).toFixed(1)}px)`;
   setTimeout(() => {
-    for (const el of [from, to]) {
+    for (const el of [from, to, hdr]) {
       el.classList.remove('drag', 'under');
       el.style.transition = el.style.transform = el.style.top = '';
     }
