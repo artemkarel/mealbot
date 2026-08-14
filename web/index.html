@@ -705,7 +705,16 @@ function renderDays() {
     `<div class="day ${i === day ? 'on' : ''}" onclick="selDay(${i})">${n}${
       nums ? `<b class="num">${nums[i]}</b>` : `<b class="num">·</b>`}</div>`).join('');
 }
-function selDay(i) { day = i; renderDays(); paint(); }
+function selDay(i) {
+  if (i === day) return;
+  const dir = i > day ? 'in-r' : 'in-l';       // как при смене вкладок
+  day = i; renderDays(); paint();
+  const scr = document.getElementById('s-today');
+  scr.classList.remove('in-r', 'in-l');
+  void scr.offsetWidth;                        // перезапуск анимации при быстрых тапах
+  scr.classList.add(dir);
+  setTimeout(() => scr.classList.remove(dir), 240);
+}
 
 async function renderToday() {
   let t;
