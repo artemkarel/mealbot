@@ -1,15 +1,28 @@
 """Подключение к SQLite и применение схемы."""
-import sqlite3, os, json
+import sqlite3, os, json, threading
 from pathlib import Path
 
 DB_PATH = Path(os.getenv("DB_PATH", "data/mealplan.db"))
 MAX_UID_OFFSET = 2_000_000_000_000   # id пользователей MAX — без пересечений с Telegram
 
+_tls = threading.local()
+
 def connect():
+    """Одно соединение на поток. Раньше каждое обращение открывало новое и
+    не закрывало его — бот за полсуток упирался в лимит открытых файлов."""
+    con = getattr(_tls, "con", None)
+    if con is not None:
+        try:
+            con.execute("SELECT 1").fetchone()
+            return con
+        except Exception:
+            try: con.close()
+            except Exception: pass
     DB_PATH.parent.mkdir(parents=True, exist_ok=True)
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys=ON")
+    _tls.con = con
     return con
 
 def _migrate(con):
