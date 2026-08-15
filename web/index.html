@@ -221,13 +221,29 @@ body.tg{padding:0;background:var(--bg);
 .macro .t3{font-size:11px;color:var(--ink3);margin-top:2px}
 .dot{display:inline-block;width:7px;height:7px;border-radius:50%;margin-right:3px;vertical-align:1px}
 
-/* чат с ИИ-диетологом */
+/* чат с ИИ-диетологом — как в Telegram */
 .chat{display:flex;flex-direction:column;padding-bottom:4px}
-.msg{max-width:86%;border-radius:14px;padding:9px 12px;margin:5px 0;font-size:14px;
-  line-height:1.5;white-space:pre-wrap;overflow-wrap:break-word}
-.msg.me{background:var(--accent);color:#fff;align-self:flex-end;border-bottom-right-radius:5px}
-.msg.ai{background:#fff;align-self:flex-start;border-bottom-left-radius:5px}
+.msg{position:relative;max-width:84%;border-radius:16px;padding:7px 12px 8px;margin:3px 0;
+  font-size:14.5px;line-height:1.45;white-space:pre-wrap;overflow-wrap:break-word;
+  box-shadow:0 1px 1px rgba(20,25,20,.07)}
+.msg.me{background:#EFFDDE;color:var(--ink);align-self:flex-end;border-bottom-right-radius:4px}
+.msg.ai{background:#fff;align-self:flex-start;border-bottom-left-radius:4px}
+.msg.me::after{content:'';position:absolute;bottom:0;right:-6px;
+  border:7px solid transparent;border-left-color:#EFFDDE;border-bottom:0;border-right:0}
+.msg.ai::after{content:'';position:absolute;bottom:0;left:-6px;
+  border:7px solid transparent;border-right-color:#fff;border-bottom:0;border-left:0}
+.msg .tm{float:right;font-size:10.5px;color:rgba(30,45,35,.4);margin:9px -3px -4px 9px;
+  font-variant-numeric:tabular-nums}
 .msg.typing{color:var(--ink3)}
+.date-chip{align-self:center;background:rgba(70,90,80,.14);color:#4C5B52;font-size:11.5px;
+  font-weight:600;border-radius:12px;padding:3px 10px;margin:6px 0 8px}
+.typing-d{display:inline-flex;gap:4px;padding:4px 2px 2px}
+.typing-d i{width:7px;height:7px;border-radius:50%;background:#AEB5AF;animation:td 1.1s infinite}
+.typing-d i:nth-child(2){animation-delay:.16s}
+.typing-d i:nth-child(3){animation-delay:.32s}
+@keyframes td{0%,60%,100%{transform:none;opacity:.45}30%{transform:translateY(-4px);opacity:1}}
+.msg.last-in{animation:msgIn .18s ease}
+@keyframes msgIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:none}}
 .ai-bar{position:fixed;left:0;right:0;margin:0 auto;max-width:400px;z-index:19;
   bottom:calc(54px + var(--safe-b));
   display:none;gap:8px;padding:8px 10px;background:var(--bg);border-top:1px solid var(--line)}
@@ -470,7 +486,8 @@ body.tg{padding:0;background:var(--bg);
     onclick="document.getElementById('aiFile').click()">📎</button>
   <input id="aiInp" placeholder="Спроси про питание…" autocomplete="off"
     onkeydown="if(event.key==='Enter')sendAi()">
-  <button id="aiSend" onclick="sendAi()">➤</button>
+  <button id="aiSend" onclick="sendAi()"><svg viewBox="0 0 24 24" width="17" height="17"
+    fill="currentColor"><path d="M2.5 21.5 23 12 2.5 2.5l3.4 8.1L15 12l-9.1 1.4z"/></svg></button>
 </div>
 <input type="file" id="aiFile" style="display:none"
   accept=".pdf,.docx,.txt,.xlsx,.xlsm,.md,.csv,image/*"
@@ -838,18 +855,31 @@ function renderAi() {
         `<span class="hint-chip" onclick="sendAi('${h}')">${h}</span>`).join('')}</div>`;
     return;
   }
+  const hhmm = t => {
+    const d = new Date(t);
+    return String(d.getHours()).padStart(2, '0') + ':' + String(d.getMinutes()).padStart(2, '0');
+  };
+  const today = new Date().toDateString();
+  const first = aiHist[0] && aiHist[0].t;
+  const dateChip = first
+    ? `<div class="date-chip">${new Date(first).toDateString() === today ? 'Сегодня'
+        : new Date(first).toLocaleDateString('ru-RU', {day: 'numeric', month: 'long'})}</div>`
+    : '';
   el.innerHTML =
-    `<div style="text-align:right;padding:2px 2px 4px">
+    `<div style="text-align:right;padding:2px 2px 0">
        <span class="link" style="font-size:12px" onclick="clearAi()">очистить чат</span></div>`
+    + dateChip
     + aiHist.map((m, i) =>
-        `<div class="msg ${m.role === 'user' ? 'me' : 'ai'}">${esc(m.content)}</div>`
+        `<div class="msg ${m.role === 'user' ? 'me' : 'ai'}${
+            i === aiHist.length - 1 && !aiBusy ? ' last-in' : ''}">${esc(m.content)}${
+            m.t ? `<span class="tm">${hhmm(m.t)}</span>` : ''}</div>`
         + (m.recipe && m.role === 'assistant'
-           ? `<div style="align-self:flex-start;margin:-1px 0 5px">
+           ? `<div style="align-self:flex-start;margin:1px 0 5px">
                 <button class="btn" style="font-size:12.5px;padding:5px 10px"
                   ${m.saved ? 'disabled' : ''} onclick="saveChatRecipe(${i})">
                   ${m.saved ? 'Сохранено ✓' : '➕ В мои рецепты'}</button></div>`
            : '')).join('')
-    + (aiBusy ? '<div class="msg ai typing">Печатает…</div>' : '');
+    + (aiBusy ? `<div class="msg ai typing last-in"><span class="typing-d"><i></i><i></i><i></i></span></div>` : '');
   const last = el.lastElementChild;
   if (last) last.scrollIntoView({block: 'nearest'});
 }
@@ -859,14 +889,14 @@ async function sendAi(text) {
   const q = (text || inp.value).trim();
   if (!q) return;
   inp.value = '';
-  aiHist.push({role: 'user', content: q});
+  aiHist.push({role: 'user', content: q, t: Date.now()});
   aiBusy = true;
   document.getElementById('aiSend').disabled = true;
   renderAi();
   try {
     const r = await api('/api/ai', {method: 'POST', headers: {'Content-Type': 'application/json'},
       body: JSON.stringify({message: q, history: aiHist.slice(-9, -1)})});
-    aiHist.push({role: 'assistant', content: r.answer, recipe: r.recipe || null});
+    aiHist.push({role: 'assistant', content: r.answer, recipe: r.recipe || null, t: Date.now()});
   } catch (e) {
     aiHist.pop();
     toast(e.message);
@@ -921,18 +951,18 @@ async function planPayload(f) {
 }
 async function aiImport(f) {
   if (!f || aiBusy) return;
-  aiHist.push({role: 'user', content: '📎 ' + f.name});
+  aiHist.push({role: 'user', content: '📎 ' + f.name, t: Date.now()});
   aiBusy = true; renderAi();
   try {
     const payload = await planPayload(f);
     const r = await api('/api/plans/import', {method: 'POST',
       headers: {'Content-Type': 'application/json'}, body: JSON.stringify(payload)});
     resetCaches();
-    aiHist.push({role: 'assistant',
+    aiHist.push({role: 'assistant', t: Date.now(),
       content: `План «${r.title}» добавлен (${r.days} дн.) и выбран текущим ✅\n`
              + 'Проверь его на вкладках «Сегодня» и «Неделя».'});
   } catch (e) {
-    aiHist.push({role: 'assistant', content: 'Не получилось добавить план: ' + e.message});
+    aiHist.push({role: 'assistant', content: 'Не получилось добавить план: ' + e.message, t: Date.now()});
   }
   aiBusy = false;
   localStorage.setItem('aiChat', JSON.stringify(aiHist.slice(-40)));
