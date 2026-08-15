@@ -181,6 +181,12 @@ async def handle_update(u):
 
 # ---------- напоминания (только пользователи MAX) ----------
 
+REMINDER_FALLBACK = {
+    "evening": "🌙 На завтра ничего готовить с вечера не нужно — отдыхай.",
+    "morning": "🎒 Сегодня собирать с собой ничего не нужно.",
+}
+
+
 async def fire_reminder(r):
     uid = r["user_id"]
     builders = {"morning": lambda: build_morning(uid),
@@ -188,7 +194,7 @@ async def fire_reminder(r):
                 "shopping": lambda: build_shopping_note(uid),
                 "menu": lambda: build_menu(uid),
                 "meal": lambda: build_meal(uid, r["meal"])}
-    text = builders.get(r["kind"], lambda: "")()
+    text = builders.get(r["kind"], lambda: "")() or REMINDER_FALLBACK.get(r["kind"], "")
     if text:
         await send(text, user_id=uid - MAX_UID_OFFSET)
 

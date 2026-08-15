@@ -246,6 +246,14 @@ async def ai_chat(m: Message):
 
 # ---------- напоминания ----------
 
+# если по плану делать нечего — бот всё равно отвечает, а не молчит,
+# иначе кажется, что напоминание не сработало
+REMINDER_FALLBACK = {
+    "evening": "🌙 На завтра ничего готовить с вечера не нужно — отдыхай.",
+    "morning": "🎒 Сегодня собирать с собой ничего не нужно.",
+}
+
+
 async def fire_reminder(r):
     uid = r["user_id"]
     builders = {"morning": lambda: build_morning(uid),
@@ -253,7 +261,7 @@ async def fire_reminder(r):
                 "shopping": lambda: build_shopping_note(uid),
                 "menu": lambda: build_menu(uid),
                 "meal": lambda: build_meal(uid, r["meal"])}
-    text = builders.get(r["kind"], lambda: "")()
+    text = builders.get(r["kind"], lambda: "")() or REMINDER_FALLBACK.get(r["kind"], "")
     if text:
         await tidy_chat(uid)         # чат «в одном окне»: убираем прошлые сообщения
         sent = await bot.send_message(uid, text, reply_markup=kb)
