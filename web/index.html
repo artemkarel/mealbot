@@ -33,13 +33,22 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .back.on{display:block}
 .hdr h1{margin:0;font-size:20px;font-weight:700;letter-spacing:-.02em;flex:1}
 .hdr .sub{color:var(--ink2);font-size:13px;margin-top:1px}
-.days{display:flex;gap:6px;margin-top:4px;overflow-x:auto;scrollbar-width:none;justify-content:center}
-.days::-webkit-scrollbar{display:none}
-.day{flex:1 1 0;min-width:0;text-align:center;padding:6px 0;border-radius:10px;border:1px solid var(--line);
-  background:#fff;cursor:pointer;font-size:11px;color:var(--ink2)}
-.day b{display:block;font-size:15px;color:var(--ink);font-weight:600}
-.day.on{background:var(--accent);border-color:var(--accent);color:#CFE3D6}
-.day.on b{color:#fff}
+/* лента дат: белая карточка, стрелки по бокам, месяц вертикально слева */
+.days-wrap{display:flex;align-items:center;gap:2px;margin-top:4px;background:var(--card);
+  border-radius:16px;padding:7px 4px;box-shadow:0 1px 2px rgba(22,25,26,.04)}
+.month-side{writing-mode:vertical-rl;transform:rotate(180deg);font-size:9px;font-weight:700;
+  letter-spacing:.14em;text-transform:uppercase;color:var(--ink3);padding:2px 0 2px 3px;flex:0 0 auto}
+.day-arr{flex:0 0 auto;border:0;background:none;color:var(--ink3);font-size:20px;line-height:1;
+  padding:6px 3px;cursor:pointer;font-family:inherit}
+.day-arr:disabled{opacity:.25}
+.days{flex:1;display:flex;gap:3px;min-width:0}
+.day{flex:1 1 0;min-width:0;text-align:center;padding:5px 0 6px;border-radius:12px;
+  border:0;background:none;cursor:pointer;font-family:inherit}
+.day .wd{display:block;font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--ink3)}
+.day .wd.we{color:#C25048}
+.day b{display:block;font-size:17px;font-weight:700;color:var(--ink);margin-top:1px}
+.day.on{background:var(--accent)}
+.day.on .wd,.day.on b{color:#fff}
 
 .scr{display:none;padding:12px 12px 84px;flex:1 0 auto}   /* растёт по контенту; снизу место под меню */
 .scr.on{display:block}
@@ -277,7 +286,12 @@ body.tg{padding:0;background:var(--bg);
         <div class="sub" id="hSub"></div>
       </div>
     </div>
-    <div class="days" id="dayStrip"></div>
+    <div class="days-wrap" id="dayStrip">
+      <div class="month-side" id="monthSide"></div>
+      <button class="day-arr" id="dayPrev" onclick="stepDay(-1)">‹</button>
+      <div class="days" id="daysRow"></div>
+      <button class="day-arr" id="dayNext" onclick="stepDay(1)">›</button>
+    </div>
   </div>
 
   <!-- ===== СЕГОДНЯ ===== -->
@@ -734,15 +748,32 @@ async function loadDay(d) {
 }
 
 /* ---------- день ---------- */
-function dayNums() {
-  const m = planTitle.match(/(\d+)\s*[-–—]\s*(\d+)/);
-  return m && +m[1] + 6 === +m[2] ? DS.map((_, i) => +m[1] + i) : null;
+const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
+                'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
+function weekDates() {
+  // календарные даты текущей недели: Пн … Вс
+  const now = new Date(), monday = new Date(now);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  return DS.map((_, i) => {
+    const d = new Date(monday);
+    d.setDate(monday.getDate() + i);
+    return d;
+  });
 }
+function dayNums() { return weekDates().map(d => d.getDate()); }
 function renderDays() {
-  const nums = dayNums();
-  document.getElementById('dayStrip').innerHTML = DS.map((n, i) =>
-    `<div class="day ${i === day ? 'on' : ''}" onclick="selDay(${i})">${n}${
-      nums ? `<b class="num">${nums[i]}</b>` : `<b class="num">·</b>`}</div>`).join('');
+  const dates = weekDates();
+  document.getElementById('monthSide').textContent = MONTHS[dates[day].getMonth()];
+  document.getElementById('dayPrev').disabled = day === 0;
+  document.getElementById('dayNext').disabled = day === 6;
+  document.getElementById('daysRow').innerHTML = DS.map((n, i) =>
+    `<button class="day ${i === day ? 'on' : ''}" onclick="selDay(${i})">
+      <span class="wd ${i >= 5 ? 'we' : ''}">${n}</span>
+      <b class="num">${dates[i].getDate()}</b></button>`).join('');
+}
+function stepDay(d) {
+  const i = day + d;
+  if (i >= 0 && i <= 6) selDay(i);
 }
 function selDay(i) {
   if (i === day) return;
