@@ -774,19 +774,41 @@ function renderDays() {
       <span class="wd ${i >= 5 ? 'we' : ''}">${n}</span>
       <b class="num">${dates[i].getDate()}</b></button>`).join('');
 }
+function animToday(dir) {
+  const scr = document.getElementById('s-today');
+  scr.classList.remove('in-r', 'in-l');
+  void scr.offsetWidth;                        // перезапуск при быстрых жестах
+  scr.classList.add(dir > 0 ? 'in-r' : 'in-l');
+  setTimeout(() => scr.classList.remove('in-r', 'in-l'), 240);
+}
 function stepDay(dir) {
   let i = day + dir, w = week;
   if (i > 6) { if (w >= MAX_WEEK) return; w++; i = 0; }       // мотаем в следующую неделю
   else if (i < 0) { if (w <= 0) return; w--; i = 6; }
   if (w === week && i === day) return;
   week = w; day = i;
-  renderDays(); paint();
-  const scr = document.getElementById('s-today');
-  scr.classList.remove('in-r', 'in-l');
-  void scr.offsetWidth;
-  scr.classList.add(dir > 0 ? 'in-r' : 'in-l');
-  setTimeout(() => scr.classList.remove('in-r', 'in-l'), 240);
+  renderDays(); paint(); animToday(dir);
 }
+function stepWeek(dir) {
+  const w = week + dir;
+  if (w < 0 || w > MAX_WEEK) return;
+  week = w;
+  renderDays(); paint(); animToday(dir);
+}
+// свайп по ленте дат — перелистывает сразу неделю (в обе стороны)
+let dsw = null;
+document.getElementById('dayStrip').addEventListener('touchstart', e => {
+  dsw = e.touches.length === 1
+    ? {x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now()} : null;
+}, {passive: true});
+document.getElementById('dayStrip').addEventListener('touchend', e => {
+  if (!dsw) return;
+  const dx = e.changedTouches[0].clientX - dsw.x, dy = e.changedTouches[0].clientY - dsw.y;
+  const dt = Date.now() - dsw.t;
+  dsw = null;
+  if (dt > 600 || Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
+  stepWeek(dx < 0 ? 1 : -1);                   // влево — следующая, вправо — предыдущая
+}, {passive: true});
 function selDay(i) {
   if (i === day) return;
   const dir = i > day ? 'in-r' : 'in-l';       // как при смене вкладок
