@@ -41,9 +41,9 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .day-arr{flex:0 0 auto;border:0;background:none;color:var(--ink3);font-size:20px;line-height:1;
   padding:6px 3px;cursor:pointer;font-family:inherit}
 .day-arr:disabled{opacity:.25}
-.days{flex:1;display:flex;gap:3px;min-width:0;overflow:hidden}
-.days-track{display:flex;width:200%;transition:transform .28s ease}
-.days-page{flex:0 0 50%;display:flex;gap:3px;min-width:0}
+.days{flex:1;display:flex;min-width:0;overflow:hidden}
+.days-track3{display:flex;width:300%;transform:translateX(-33.3333%)}
+.days-page{flex:0 0 33.3333%;display:flex;gap:3px;min-width:0}
 .day{flex:1 1 0;min-width:0;text-align:center;padding:5px 0 6px;border-radius:12px;
   border:0;background:none;cursor:pointer;font-family:inherit}
 .day .wd{display:block;font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--ink3)}
@@ -755,10 +755,10 @@ async function loadDay(d) {
 /* ---------- день ---------- */
 const MONTHS = ['январь', 'февраль', 'март', 'апрель', 'май', 'июнь',
                 'июль', 'август', 'сентябрь', 'октябрь', 'ноябрь', 'декабрь'];
-function weekDates() {
-  // календарные даты текущей недели: Пн … Вс
+function weekDates(w = week) {
+  // календарные даты недели с офсетом w: Пн … Вс
   const now = new Date(), monday = new Date(now);
-  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7) + week * 7);
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7) + w * 7);
   return DS.map((_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
@@ -766,42 +766,22 @@ function weekDates() {
   });
 }
 function dayNums() { return weekDates().map(d => d.getDate()); }
-let daysHTMLLast = '', daysSlideTimer = null, daysSliding = false;
+function pageHTML(w) {
+  const dates = weekDates(w);
+  return `<div class="days-page">` + DS.map((n, i) =>
+    `<button class="day ${w === week && i === day ? 'on' : ''}"
+        ${w === week ? `onclick="selDay(${i})"` : ''}>
+      <span class="wd ${i >= 5 ? 'we' : ''}">${n}</span>
+      <b class="num">${dates[i].getDate()}</b></button>`).join('') + `</div>`;
+}
 function renderDays() {
   const dates = weekDates();
   document.getElementById('monthSide').textContent = MONTHS[dates[day].getMonth()];
   document.getElementById('dayPrev').disabled = day === 0 && week === 0;
   document.getElementById('dayNext').disabled = day === 6 && week >= MAX_WEEK;
-  daysHTMLLast = DS.map((n, i) =>
-    `<button class="day ${i === day ? 'on' : ''}" onclick="selDay(${i})">
-      <span class="wd ${i >= 5 ? 'we' : ''}">${n}</span>
-      <b class="num">${dates[i].getDate()}</b></button>`).join('');
-  if (!daysSliding)                            // пока едет карусель — не перебиваем её
-    document.getElementById('daysRow').innerHTML = daysHTMLLast;
-}
-function slideDays(dir) {
-  // карусель: старая неделя уезжает, новая въезжает следом
-  clearTimeout(daysSlideTimer);
-  const prev = daysHTMLLast;
-  daysSliding = true;
-  renderDays();
-  const next = daysHTMLLast;
-  const row = document.getElementById('daysRow');
-  if (!prev || prev === next) {
-    daysSliding = false;
-    row.innerHTML = next;
-    return;
-  }
-  const pages = dir > 0 ? [prev, next] : [next, prev];
-  row.innerHTML = `<div class="days-track" style="transform:translateX(${dir > 0 ? '0' : '-50%'})">
-      <div class="days-page">${pages[0]}</div><div class="days-page">${pages[1]}</div></div>`;
-  const track = row.firstElementChild;
-  void track.offsetWidth;
-  track.style.transform = dir > 0 ? 'translateX(-50%)' : 'translateX(0)';
-  daysSlideTimer = setTimeout(() => {
-    daysSliding = false;
-    row.innerHTML = daysHTMLLast;              // к этому моменту могла смениться ещё раз
-  }, 300);
+  // трек из трёх недель: при перетаскивании видно соседние, якорь — понедельник
+  document.getElementById('daysRow').innerHTML =
+    `<div class="days-track3">${pageHTML(week - 1)}${pageHTML(week)}${pageHTML(week + 1)}</div>`;
 }
 function animToday(dir) {
   const scr = document.getElementById('s-today');
@@ -810,36 +790,69 @@ function animToday(dir) {
   scr.classList.add(dir > 0 ? 'in-r' : 'in-l');
   setTimeout(() => scr.classList.remove('in-r', 'in-l'), 240);
 }
-function stepDay(dir) {
-  let i = day + dir, w = week;
-  if (i > 6) { if (w >= MAX_WEEK) return; w++; i = 0; }       // мотаем в следующую неделю
-  else if (i < 0) { if (w <= 0) return; w--; i = 6; }
-  if (w === week && i === day) return;
-  const crossed = w !== week;
-  week = w; day = i;
-  crossed ? slideDays(dir) : renderDays();
-  paint(); animToday(dir);
-}
-function stepWeek(dir) {
+function pageWeek(dir, targetDay) {
   const w = week + dir;
   if (w < 0 || w > MAX_WEEK) return;
-  week = w;
-  slideDays(dir);
-  paint(); animToday(dir);
+  const track = document.querySelector('.days-track3');
+  const done = () => { week = w; day = targetDay; renderDays(); paint(); animToday(dir); };
+  if (track) {
+    track.style.transition = 'transform .22s ease';
+    track.style.transform = `translateX(${dir > 0 ? '-66.6666%' : '0%'})`;
+    setTimeout(done, 230);
+  } else done();
 }
-// свайп по ленте дат — перелистывает сразу неделю (в обе стороны)
+function stepWeek(dir) { pageWeek(dir, 0); }     // якорение на первом дне недели
+function stepDay(dir) {
+  const i = day + dir;
+  if (i > 6) return pageWeek(1, 0);
+  if (i < 0) return pageWeek(-1, 6);
+  day = i; renderDays(); paint(); animToday(dir);
+}
+// лента дат едет за пальцем; отпустил — примагничивается к неделе Пн–Вс
 let dsw = null;
 document.getElementById('dayStrip').addEventListener('touchstart', e => {
-  dsw = e.touches.length === 1
-    ? {x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now()} : null;
+  if (e.touches.length !== 1) { dsw = null; return; }
+  const track = document.querySelector('.days-track3');
+  if (track) track.style.transition = 'none';
+  dsw = {x: e.touches[0].clientX, y: e.touches[0].clientY, t: Date.now(),
+         w: document.getElementById('daysRow').clientWidth || 300,
+         track, engaged: false, dead: false};
 }, {passive: true});
+document.getElementById('dayStrip').addEventListener('touchmove', e => {
+  if (!dsw || dsw.dead) return;
+  if (!dsw.track || !document.contains(dsw.track)) {   // трек могли перерисовать под пальцем
+    dsw.track = document.querySelector('.days-track3');
+    if (dsw.track) dsw.track.style.transition = 'none';
+    else return;
+  }
+  const dx = e.touches[0].clientX - dsw.x, dy = e.touches[0].clientY - dsw.y;
+  if (!dsw.engaged) {
+    if (Math.abs(dy) > 12 && Math.abs(dy) > Math.abs(dx)) { dsw.dead = true; return; }
+    if (Math.abs(dx) < 8) return;
+    dsw.engaged = true;
+  }
+  e.preventDefault();
+  let d = dx;
+  if ((week === 0 && d > 0) || (week >= MAX_WEEK && d < 0)) d = d / 3;   // резинка на краях
+  dsw.track.style.transform = `translateX(calc(-33.3333% + ${d}px))`;
+}, {passive: false});
 document.getElementById('dayStrip').addEventListener('touchend', e => {
   if (!dsw) return;
-  const dx = e.changedTouches[0].clientX - dsw.x, dy = e.changedTouches[0].clientY - dsw.y;
-  const dt = Date.now() - dsw.t;
-  dsw = null;
-  if (dt > 600 || Math.abs(dx) < 50 || Math.abs(dx) < Math.abs(dy) * 1.5) return;
-  stepWeek(dx < 0 ? 1 : -1);                   // влево — следующая, вправо — предыдущая
+  const s = dsw; dsw = null;
+  if (!s.engaged) return;
+  if (!s.track || !document.contains(s.track)) s.track = document.querySelector('.days-track3');
+  if (!s.track) return;
+  const dx = e.changedTouches[0].clientX - s.x, dt = Date.now() - s.t;
+  const flick = Math.abs(dx) > 60 && dt < 280;
+  let dir = 0;
+  if (dx < 0 && (Math.abs(dx) > s.w * 0.3 || flick) && week < MAX_WEEK) dir = 1;
+  else if (dx > 0 && (Math.abs(dx) > s.w * 0.3 || flick) && week > 0) dir = -1;
+  s.track.style.transition = 'transform .22s ease';
+  s.track.style.transform = `translateX(${dir === 1 ? '-66.6666%' : dir === -1 ? '0%' : '-33.3333%'})`;
+  setTimeout(() => {
+    if (dir) { week += dir; day = 0; renderDays(); paint(); animToday(dir); }
+    else renderDays();
+  }, 230);
 }, {passive: true});
 function selDay(i) {
   if (i === day) return;
