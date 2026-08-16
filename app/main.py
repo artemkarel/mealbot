@@ -5,7 +5,9 @@ from datetime import date
 from fastapi import FastAPI, Header, HTTPException
 from fastapi.staticfiles import StaticFiles
 from app.db import (connect, init, current_plan, persons_of, set_current_plan,
-                    set_persons, day_items, touch_user, MAX_UID_OFFSET)
+                    set_persons, day_items, touch_user, MAX_UID_OFFSET,
+                    plan_for, monday_of)
+from datetime import timedelta
 from app.cooking import cook_plan, same_days
 from app.macros import day_macros
 from app.shopping import build as build_shopping
@@ -54,10 +56,20 @@ def active_plan(con, uid: int):
     if not r: raise HTTPException(404, "План не загружен — пришли боту файл от диетолога")
     return r
 
+def week_plan(con, uid: int, week: int):
+    """План на неделю с офсетом от текущей (0 = эта неделя). None — неделя пустая."""
+    return plan_for(con, uid, date.today() + timedelta(weeks=max(0, min(52, week))))
+
 @app.get("/api/today")
-def today(day: int = 0, x_init_data: str = Header(None)):
+def today(day: int = 0, week: int = 0, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
-    con = connect(); plan = active_plan(con, uid)
+    con = connect()
+    plan = week_plan(con, uid, week)
+    ws = monday_of(date.today() + timedelta(weeks=week))
+    if not plan:                                   # будущая неделя без плана — выбор
+        return {"plan": None, "week_start": ws, "persons": persons_of(con, uid),
+                "day": day, "day_name": None, "meals": [], "logs": {}, "prep": [],
+                "macros": {"total": {"kcal": 0}, "meals": {}, "unknown": 0}, "same_as": []}
     items = day_items(con, uid, plan["id"], day)   # с учётом замен приёмов
     # базовые рецепты (plan_id IS NULL) перекрываются рецептами конкретного плана
     recipes = {r["dish"]: {"title": r["title"],
@@ -82,16 +94,18 @@ def today(day: int = 0, x_init_data: str = Header(None)):
         (plan["id"], day, uid))}
     prep = [dict(r) for r in con.execute(
         "SELECT * FROM prep_tasks WHERE plan_id=? AND day_index=?", (plan["id"], day))]
-    return {"plan": plan["title"], "persons": persons_of(con, uid), "day": day,
-            "day_name": items[0]["day_name"] if items else None,
+    return {"plan": plan["title"], "week_start": ws, "persons": persons_of(con, uid),
+            "day": day, "day_name": items[0]["day_name"] if items else None,
             "meals": list(meals.values()), "logs": logs, "prep": prep,
             "macros": day_macros(con, items),
             "same_as": same_days(plan["id"]).get(day, [])}
 
 @app.get("/api/cook")
-def cook(day: int = 0, days: int = 1, x_init_data: str = Header(None)):
+def cook(day: int = 0, days: int = 1, week: int = 0, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
-    con = connect(); plan = active_plan(con, uid)
+    con = connect()
+    plan = week_plan(con, uid, week)
+    if not plan: raise HTTPException(404, "на эту неделю план не выбран")
     persons = persons_of(con, uid)
     return {"days": days, "persons": persons,
             "list": cook_plan(plan["id"], day, days, persons,
@@ -261,7 +275,8 @@ def plan_delete(id: int, x_init_data: str = Header(None)):
         raise HTTPException(404, "это не твой план")
     if r["user_id"] is None and uid not in ADMINS:
         raise HTTPException(403, "общий план может удалить только админ")
-    for t in ("plan_items", "recipes", "prep_tasks", "meal_logs", "meal_overrides"):
+    for t in ("plan_items", "recipes", "prep_tasks", "meal_logs", "meal_overrides",
+              "week_plans"):
         con.execute(f"DELETE FROM {t} WHERE plan_id=?", (id,))
     con.execute("DELETE FROM plans WHERE id=?", (id,))
     con.execute("UPDATE user_prefs SET current_plan_id=NULL WHERE current_plan_id=?", (id,))
@@ -342,6 +357,24 @@ def plan_save_generated(payload: dict, x_init_data: str = Header(None)):
                      str(it.get("unit") or "")[:10] or None))
     con.commit()
     return {"ok": True, "plan_id": pid, "title": title}
+
+# ---------- план на неделю ----------
+
+@app.post("/api/week_plan")
+def week_plan_set(week: int, plan_id: int, x_init_data: str = Header(None)):
+    """Назначить план на неделю (с понедельника). week — офсет от текущей."""
+    uid = me(x_init_data)["id"]
+    if not (0 <= week <= 52): raise HTTPException(400, "неверная неделя")
+    con = connect()
+    r = con.execute("SELECT id FROM plans WHERE id=? AND (user_id=? OR user_id IS NULL)",
+                    (plan_id, uid)).fetchone()
+    if not r: raise HTTPException(404, "это не твой план")
+    ws = monday_of(date.today() + timedelta(weeks=week))
+    con.execute("INSERT INTO week_plans(user_id, week_start, plan_id) VALUES(?,?,?)"
+                " ON CONFLICT(user_id, week_start) DO UPDATE SET plan_id=excluded.plan_id",
+                (uid, ws, plan_id))
+    con.commit()
+    return {"ok": True, "week_start": ws}
 
 # ---------- импорт плана через ИИ ----------
 
@@ -440,10 +473,12 @@ def _meal_pool(con, uid: int, meal: str):
     return pool
 
 @app.get("/api/swap/options")
-def swap_options(day: int, meal: str, x_init_data: str = Header(None)):
+def swap_options(day: int, meal: str, week: int = 0, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
     if meal not in MEALS: raise HTTPException(400, "неизвестный приём пищи")
-    con = connect(); plan = active_plan(con, uid)
+    con = connect()
+    plan = week_plan(con, uid, week)
+    if not plan: raise HTTPException(404, "на эту неделю план не выбран")
     cur_sig = tuple(r["name"] for r in day_items(con, uid, plan["id"], day)
                     if r["meal"] == meal)
     variants = [{"items": v} for s, v in _meal_pool(con, uid, meal).items() if s != cur_sig]
@@ -468,7 +503,9 @@ def swap_apply(payload: dict, x_init_data: str = Header(None)):
              for it in (payload.get("items") or [])[:15]]
     items = [it for it in items if it["name"]]
     if not items: raise HTTPException(400, "пустая замена")
-    con = connect(); plan = active_plan(con, uid)
+    con = connect()
+    plan = week_plan(con, uid, int(payload.get("week") or 0))
+    if not plan: raise HTTPException(404, "на эту неделю план не выбран")
     con.execute("INSERT INTO meal_overrides(user_id,plan_id,day_index,meal,items_json)"
                 " VALUES(?,?,?,?,?)"
                 " ON CONFLICT(user_id,plan_id,day_index,meal)"
@@ -478,9 +515,11 @@ def swap_apply(payload: dict, x_init_data: str = Header(None)):
     con.commit(); return {"ok": True}
 
 @app.post("/api/swap/revert")
-def swap_revert(day: int, meal: str, x_init_data: str = Header(None)):
+def swap_revert(day: int, meal: str, week: int = 0, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
-    con = connect(); plan = active_plan(con, uid)
+    con = connect()
+    plan = week_plan(con, uid, week)
+    if not plan: raise HTTPException(404, "на эту неделю план не выбран")
     con.execute("DELETE FROM meal_overrides"
                 " WHERE user_id=? AND plan_id=? AND day_index=? AND meal=?",
                 (uid, plan["id"], day, meal))

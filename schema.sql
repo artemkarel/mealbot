@@ -63,6 +63,10 @@ CREATE TABLE IF NOT EXISTS user_places (            -- «где купить» �
   user_id INT, product TEXT, place TEXT,
   PRIMARY KEY (user_id, product));
 
+CREATE TABLE IF NOT EXISTS week_plans (             -- какой план выбран на какую неделю
+  user_id INT, week_start TEXT, plan_id INT,        -- week_start = понедельник, YYYY-MM-DD
+  PRIMARY KEY (user_id, week_start));
+
 CREATE TABLE IF NOT EXISTS users (                  -- кто пользуется ботом/приложением
   user_id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, username TEXT,
   first_seen TEXT DEFAULT (datetime('now')), last_seen TEXT, source TEXT);

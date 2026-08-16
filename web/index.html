@@ -555,6 +555,8 @@ async function api(path, opts = {}) {
 const DS = ["Пн","Вт","Ср","Чт","Пт","Сб","Вс"];
 let P = 1;                                   // человек (с сервера)
 let day = (new Date().getDay() + 6) % 7;     // выбранный день, по умолчанию сегодняшний
+let week = 0;                                // офсет недели от текущей (мотаем вперёд)
+const MAX_WEEK = 8;
 let planTitle = '';
 let dayCache = {};                           // day -> ответ /api/today
 let shopData = null;                         // ответ /api/shopping
@@ -739,12 +741,13 @@ function paint() {
 
 /* ---------- данные ---------- */
 async function loadDay(d) {
-  if (!dayCache[d]) {
-    dayCache[d] = await api('/api/today?day=' + d);
-    P = dayCache[d].persons;
-    planTitle = dayCache[d].plan.replace(/\.(docx|txt)$/i, '');
+  const key = week + ':' + d;
+  if (!dayCache[key]) {
+    dayCache[key] = await api(`/api/today?day=${d}&week=${week}`);
+    P = dayCache[key].persons;
+    if (dayCache[key].plan) planTitle = dayCache[key].plan.replace(/\.(docx|txt)$/i, '');
   }
-  return dayCache[d];
+  return dayCache[key];
 }
 
 /* ---------- день ---------- */
@@ -753,7 +756,7 @@ const MONTHS = ['январь', 'февраль', 'март', 'апрель', '�
 function weekDates() {
   // календарные даты текущей недели: Пн … Вс
   const now = new Date(), monday = new Date(now);
-  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7));
+  monday.setDate(now.getDate() - ((now.getDay() + 6) % 7) + week * 7);
   return DS.map((_, i) => {
     const d = new Date(monday);
     d.setDate(monday.getDate() + i);
@@ -764,16 +767,25 @@ function dayNums() { return weekDates().map(d => d.getDate()); }
 function renderDays() {
   const dates = weekDates();
   document.getElementById('monthSide').textContent = MONTHS[dates[day].getMonth()];
-  document.getElementById('dayPrev').disabled = day === 0;
-  document.getElementById('dayNext').disabled = day === 6;
+  document.getElementById('dayPrev').disabled = day === 0 && week === 0;
+  document.getElementById('dayNext').disabled = day === 6 && week >= MAX_WEEK;
   document.getElementById('daysRow').innerHTML = DS.map((n, i) =>
     `<button class="day ${i === day ? 'on' : ''}" onclick="selDay(${i})">
       <span class="wd ${i >= 5 ? 'we' : ''}">${n}</span>
       <b class="num">${dates[i].getDate()}</b></button>`).join('');
 }
-function stepDay(d) {
-  const i = day + d;
-  if (i >= 0 && i <= 6) selDay(i);
+function stepDay(dir) {
+  let i = day + dir, w = week;
+  if (i > 6) { if (w >= MAX_WEEK) return; w++; i = 0; }       // мотаем в следующую неделю
+  else if (i < 0) { if (w <= 0) return; w--; i = 6; }
+  if (w === week && i === day) return;
+  week = w; day = i;
+  renderDays(); paint();
+  const scr = document.getElementById('s-today');
+  scr.classList.remove('in-r', 'in-l');
+  void scr.offsetWidth;
+  scr.classList.add(dir > 0 ? 'in-r' : 'in-l');
+  setTimeout(() => scr.classList.remove('in-r', 'in-l'), 240);
 }
 function selDay(i) {
   if (i === day) return;
@@ -793,6 +805,26 @@ async function renderToday() {
     return;
   }
   renderDays();
+  if (!t.plan) {                       // будущая неделя без плана — выбор с понедельника
+    document.getElementById('macroCard').innerHTML = '';
+    document.getElementById('cookHint').innerHTML = '';
+    let p;
+    try { p = await api('/api/plans'); } catch (e) { p = {plans: []}; }
+    const wsTxt = t.week_start
+      ? new Date(t.week_start).toLocaleDateString('ru-RU', {day: 'numeric', month: 'long'}) : '';
+    document.getElementById('meals').innerHTML =
+      `<div class="note blue"><span class="ic">🗓</span><div><b>Неделя с ${wsTxt}</b><br>
+         План ещё не выбран — выбери, и он назначится на всю неделю с понедельника.</div></div>`
+      + (p.plans.length
+         ? `<div class="card">` + p.plans.map(x => `<div class="chk" style="cursor:default">
+              <span class="lbl">${esc(x.title.replace(/\.(docx|txt)$/i, ''))}
+                <span class="meta">${x.days} дн. · ${x.shared ? 'общий план' : 'мой'}</span></span>
+              <button class="btn" style="padding:4px 9px;font-size:12px"
+                onclick="chooseWeekPlan(${x.id})">Выбрать</button>
+            </div>`).join('') + `</div>`
+         : '<div class="empty">Планов пока нет — добавь в Профиле или пришли боту файл.</div>');
+    return;
+  }
   if (supData === null) {
     try { supData = (await api('/api/supplements')).supplements; } catch (e) { supData = []; }
   }
@@ -1024,7 +1056,7 @@ async function openSwap(meal) {
   swapMeal = meal; swapSel = null;
   showSheet('<div class="empty">Подбираю варианты…</div>');
   let r;
-  try { r = await api(`/api/swap/options?day=${day}&meal=${encodeURIComponent(meal)}`); }
+  try { r = await api(`/api/swap/options?day=${day}&meal=${encodeURIComponent(meal)}&week=${week}`); }
   catch (e) {
     return showSheet(`<div class="empty">${esc(e.message)}</div>
       <div class="note-acts"><button class="btn" onclick="closeSheet()">Закрыть</button></div>`);
@@ -1060,16 +1092,24 @@ async function applySwap() {
   if (swapSel == null) return;
   try {
     await api('/api/swap', {method: 'POST', headers: {'Content-Type': 'application/json'},
-      body: JSON.stringify({day, meal: swapMeal, items: swapVars[swapSel].items})});
+      body: JSON.stringify({day, week, meal: swapMeal, items: swapVars[swapSel].items})});
   } catch (e) { return toast(e.message); }
   closeSheet(); resetCaches(); renderToday();
   toast('Приём заменён — закупки и готовка пересчитаны');
 }
 async function revertSwap() {
-  try { await api(`/api/swap/revert?day=${day}&meal=${encodeURIComponent(swapMeal)}`, {method: 'POST'}); }
+  try { await api(`/api/swap/revert?day=${day}&meal=${encodeURIComponent(swapMeal)}&week=${week}`, {method: 'POST'}); }
   catch (e) { return toast(e.message); }
   closeSheet(); resetCaches(); renderToday();
   toast('Вернул как в плане');
+}
+
+async function chooseWeekPlan(id) {
+  try { await api(`/api/week_plan?week=${week}&plan_id=${id}`, {method: 'POST'}); }
+  catch (e) { return toast(e.message); }
+  dayCache = {}; cookCache = {};
+  renderToday();
+  toast('План назначен на неделю с понедельника');
 }
 
 /* ---------- что готовить ---------- */
@@ -1079,9 +1119,9 @@ function setCook(d, btn) {
   btn.classList.add('on'); renderCook();
 }
 async function renderCook() {
-  const d = st.cookDays, key = day + ':' + d;
+  const d = st.cookDays, key = week + ':' + day + ':' + d;
   document.getElementById('persCook').innerHTML = persBar(d === 2 ? 'Умножается ещё и на 2 дня' : 'На один день');
-  let t = dayCache[day];
+  let t = dayCache[week + ':' + day];
   if (!t) { try { t = await loadDay(day); } catch (e) { t = null; } }
   const dn = t && t.day_name || DS[day];
   document.getElementById('cookHead').innerHTML = d === 2
@@ -1093,7 +1133,7 @@ async function renderCook() {
         t && t.same_as.length ? ' Дни совпадают — переключи на два дня, и завтра готовить не придётся.' : ''}</div></div>`;
   let c;
   try {
-    c = cookCache[key] || (cookCache[key] = await api(`/api/cook?day=${day}&days=${d}`));
+    c = cookCache[key] || (cookCache[key] = await api(`/api/cook?day=${day}&days=${d}&week=${week}`));
   } catch (e) {
     document.getElementById('cookList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
     return;
@@ -1177,6 +1217,13 @@ async function renderWeek() {
   let days;
   try { days = await Promise.all(DS.map((_, i) => loadDay(i))); } catch (e) {
     document.getElementById('weekList').innerHTML = `<div class="card"><div class="empty">${esc(e.message)}</div></div>`;
+    return;
+  }
+  if (!days[0].plan) {
+    document.getElementById('weekSect').textContent = 'Неделя';
+    document.getElementById('weekList').innerHTML =
+      '<div class="empty">На эту неделю план не выбран — выбери на вкладке «Сегодня».</div>';
+    document.getElementById('weekFoot').innerHTML = '';
     return;
   }
   document.getElementById('weekSect').textContent = planTitle.replace(/^План питания\s*/i, '') || 'Неделя';

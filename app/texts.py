@@ -4,7 +4,7 @@ try:
     from zoneinfo import ZoneInfo
 except ImportError:          # старые питоны без zoneinfo — работаем по часам сервера
     ZoneInfo = None
-from app.db import connect, current_plan, persons_of, day_items
+from app.db import connect, current_plan, persons_of, day_items, plan_for
 from app.cooking import same_days
 from app.shopping import build as build_shopping
 
@@ -15,10 +15,12 @@ DAY_NAMES = ["понедельник", "вторник", "среду", "четв
 def day_menu_text(offset: int, uid: int) -> str:
     """Меню на сегодня (offset=0) или завтра (offset=1) одним сообщением."""
     con = connect()
-    plan = current_plan(con, uid)
+    target = date.today() + timedelta(days=offset)
+    plan = plan_for(con, uid, target)
     if not plan:
-        return "План не загружен — пришли файл от диетолога."
-    day = (date.today() + timedelta(days=offset)).weekday()
+        return ("План не загружен — пришли файл от диетолога." if offset == 0
+                else "На эту неделю план ещё не выбран — открой приложение и выбери.")
+    day = target.weekday()
     rows = day_items(con, uid, plan["id"], day)   # с учётом замен из приложения
     if not rows:
         return "На этот день в плане ничего нет."
@@ -35,7 +37,7 @@ def day_menu_text(offset: int, uid: int) -> str:
 def build_morning(uid: int) -> str:
     """Утро: что взять с собой (обед и полдник) + что истекает по сроку."""
     con = connect()
-    plan = current_plan(con, uid)
+    plan = plan_for(con, uid, date.today())
     parts = []
     if plan:
         day = date.today().weekday()
@@ -66,7 +68,7 @@ def build_morning(uid: int) -> str:
 def build_evening(uid: int) -> str:
     """Вечер: что подготовить на завтра + подсказка готовить сразу на два дня."""
     con = connect()
-    plan = current_plan(con, uid)
+    plan = plan_for(con, uid, date.today() + timedelta(days=1))
     if not plan:
         return ""
     tomorrow = (date.today() + timedelta(days=1)).weekday()
@@ -88,7 +90,7 @@ def build_meal(uid: int, meal: str) -> str:
     """Напоминание о конкретном приёме пищи + БАДы к нему."""
     con = connect()
     parts = []
-    plan = current_plan(con, uid)
+    plan = plan_for(con, uid, date.today())
     if plan and meal:
         day = date.today().weekday()
         rows = [r for r in day_items(con, uid, plan["id"], day) if r["meal"] == meal]
@@ -110,12 +112,12 @@ def build_meal(uid: int, meal: str) -> str:
 def build_menu(uid: int) -> str:
     """Напоминание «что мы едим сегодня» — меню дня одним сообщением."""
     con = connect()
-    return day_menu_text(0, uid) if current_plan(con, uid) else ""
+    return day_menu_text(0, uid) if plan_for(con, uid, date.today()) else ""
 
 
 def build_shopping_note(uid: int) -> str:
     con = connect()
-    plan = current_plan(con, uid)
+    plan = plan_for(con, uid, date.today())
     if not plan:
         return ""
     s = build_shopping(plan["id"], persons=persons_of(con, uid))

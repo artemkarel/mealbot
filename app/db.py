@@ -1,5 +1,6 @@
 """Подключение к SQLite и применение схемы."""
 import sqlite3, os, json, threading
+from datetime import date, timedelta
 from pathlib import Path
 
 DB_PATH = Path(os.getenv("DB_PATH", "data/mealplan.db"))
@@ -57,6 +58,25 @@ def current_plan(con, uid: int):
     if p: return p
     return con.execute("SELECT * FROM plans WHERE user_id IS NULL"
                        " ORDER BY id DESC LIMIT 1").fetchone()
+
+
+def monday_of(d: date) -> str:
+    return (d - timedelta(days=d.weekday())).isoformat()
+
+
+def plan_for(con, uid: int, d: date):
+    """План на дату: назначенный на её неделю; для текущей и прошлых недель
+    без назначения — обычный текущий план; для будущих — None (неделя пустая)."""
+    ws = monday_of(d)
+    r = con.execute("SELECT plan_id FROM week_plans WHERE user_id=? AND week_start=?",
+                    (uid, ws)).fetchone()
+    if r:
+        p = con.execute("SELECT * FROM plans WHERE id=? AND (user_id IS NULL OR user_id=?)",
+                        (r["plan_id"], uid)).fetchone()
+        if p: return p
+    if ws <= monday_of(date.today()):
+        return current_plan(con, uid)
+    return None
 
 
 def touch_user(con, uid: int, first_name=None, last_name=None, username=None, source=None):
