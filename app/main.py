@@ -639,6 +639,18 @@ def recipe_add(payload: dict, x_init_data: str = Header(None)):
                  json.dumps(steps, ensure_ascii=False)))
     con.commit(); return {"ok": True}
 
+@app.post("/api/recipes/attach")
+def recipe_attach(id: int, dish: str, x_init_data: str = Header(None)):
+    """Переприкрепить свой рецепт к другому блюду — ссылка «рецепт» переедет к нему."""
+    uid = me(x_init_data)["id"]
+    dish = dish.strip()[:120]
+    if not dish: raise HTTPException(400, "укажи блюдо")
+    con = connect()
+    cur = con.execute("UPDATE user_recipes SET dish=? WHERE id=? AND user_id=?",
+                      (dish, id, uid))
+    if cur.rowcount == 0: raise HTTPException(404, "это не твой рецепт")
+    con.commit(); return {"ok": True}
+
 @app.post("/api/recipes/delete")
 def recipe_delete(id: int, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]

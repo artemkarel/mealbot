@@ -41,7 +41,9 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .day-arr{flex:0 0 auto;border:0;background:none;color:var(--ink3);font-size:20px;line-height:1;
   padding:6px 3px;cursor:pointer;font-family:inherit}
 .day-arr:disabled{opacity:.25}
-.days{flex:1;display:flex;gap:3px;min-width:0}
+.days{flex:1;display:flex;gap:3px;min-width:0;overflow:hidden}
+.days-track{display:flex;width:200%;transition:transform .28s ease}
+.days-page{flex:0 0 50%;display:flex;gap:3px;min-width:0}
 .day{flex:1 1 0;min-width:0;text-align:center;padding:5px 0 6px;border-radius:12px;
   border:0;background:none;cursor:pointer;font-family:inherit}
 .day .wd{display:block;font-size:10px;font-weight:600;letter-spacing:.04em;color:var(--ink3)}
@@ -564,7 +566,7 @@ let cookCache = {};                          // "day:days" -> ответ /api/co
 let curRecipe = null;                        // рецепт для экрана готовки
 let supData = null;                          // БАДы пользователя (null = не загружены)
 let nav = {tab: 'today', stack: []};
-let st = {shop: 0, cookDays: 1, editPlace: null,
+let st = {shop: 0, cookDays: 1, editPlace: null, editRec: null,
           shopGroup: localStorage.getItem('shopGroup') || 'cat',
           checked: new Set(JSON.parse(localStorage.getItem('shopChecked') || '[]'))};
 let aiHist = JSON.parse(localStorage.getItem('aiChat') || '[]');   // чат с диетологом
@@ -764,15 +766,42 @@ function weekDates() {
   });
 }
 function dayNums() { return weekDates().map(d => d.getDate()); }
+let daysHTMLLast = '', daysSlideTimer = null, daysSliding = false;
 function renderDays() {
   const dates = weekDates();
   document.getElementById('monthSide').textContent = MONTHS[dates[day].getMonth()];
   document.getElementById('dayPrev').disabled = day === 0 && week === 0;
   document.getElementById('dayNext').disabled = day === 6 && week >= MAX_WEEK;
-  document.getElementById('daysRow').innerHTML = DS.map((n, i) =>
+  daysHTMLLast = DS.map((n, i) =>
     `<button class="day ${i === day ? 'on' : ''}" onclick="selDay(${i})">
       <span class="wd ${i >= 5 ? 'we' : ''}">${n}</span>
       <b class="num">${dates[i].getDate()}</b></button>`).join('');
+  if (!daysSliding)                            // пока едет карусель — не перебиваем её
+    document.getElementById('daysRow').innerHTML = daysHTMLLast;
+}
+function slideDays(dir) {
+  // карусель: старая неделя уезжает, новая въезжает следом
+  clearTimeout(daysSlideTimer);
+  const prev = daysHTMLLast;
+  daysSliding = true;
+  renderDays();
+  const next = daysHTMLLast;
+  const row = document.getElementById('daysRow');
+  if (!prev || prev === next) {
+    daysSliding = false;
+    row.innerHTML = next;
+    return;
+  }
+  const pages = dir > 0 ? [prev, next] : [next, prev];
+  row.innerHTML = `<div class="days-track" style="transform:translateX(${dir > 0 ? '0' : '-50%'})">
+      <div class="days-page">${pages[0]}</div><div class="days-page">${pages[1]}</div></div>`;
+  const track = row.firstElementChild;
+  void track.offsetWidth;
+  track.style.transform = dir > 0 ? 'translateX(-50%)' : 'translateX(0)';
+  daysSlideTimer = setTimeout(() => {
+    daysSliding = false;
+    row.innerHTML = daysHTMLLast;              // к этому моменту могла смениться ещё раз
+  }, 300);
 }
 function animToday(dir) {
   const scr = document.getElementById('s-today');
@@ -786,14 +815,17 @@ function stepDay(dir) {
   if (i > 6) { if (w >= MAX_WEEK) return; w++; i = 0; }       // мотаем в следующую неделю
   else if (i < 0) { if (w <= 0) return; w--; i = 6; }
   if (w === week && i === day) return;
+  const crossed = w !== week;
   week = w; day = i;
-  renderDays(); paint(); animToday(dir);
+  crossed ? slideDays(dir) : renderDays();
+  paint(); animToday(dir);
 }
 function stepWeek(dir) {
   const w = week + dir;
   if (w < 0 || w > MAX_WEEK) return;
   week = w;
-  renderDays(); paint(); animToday(dir);
+  slideDays(dir);
+  paint(); animToday(dir);
 }
 // свайп по ленте дат — перелистывает сразу неделю (в обе стороны)
 let dsw = null;
@@ -1408,9 +1440,20 @@ async function renderRecipes() {
   recipeReg = recipeReg || [];
   const mineRows = r.recipes.map(x => {
     const ri = recipeReg.push(x) - 1;
+    // прикрепление к блюду можно менять на месте — как место покупки в закупках
+    const attach = st.editRec === x.id
+      ? `<span class="meta" onclick="event.stopPropagation()">
+          <select id="attachSel" style="max-width:70%;border:1px solid var(--line);border-radius:7px;
+            padding:4px 7px;font:inherit;font-size:12.5px;background:#fff">
+            ${[x.dish, ...r.dishes.filter(d => d !== x.dish)].map(d =>
+              `<option value="${esc(d)}">${esc(d)}</option>`).join('')}
+          </select>
+          <button class="btn" style="padding:3px 8px;font-size:12px" onclick="saveAttach(${x.id})">Ок</button></span>`
+      : `<span class="meta">для блюда: ${esc(x.dish)}
+          <span class="link" style="font-size:11.5px;margin-left:6px" onclick="editAttach(${x.id})">изменить</span></span>`;
     return `<div class="chk" style="cursor:default">
       <span class="lbl"><span class="link" onclick="openRec(${ri})">${esc(x.title)}</span>
-        <span class="meta">для блюда: ${esc(x.dish)}</span></span>
+        ${attach}</span>
       <button class="btn" style="padding:4px 9px;font-size:12px;color:var(--red)" onclick="delRecipe(${x.id})">Удалить</button>
     </div>`;
   }).join('');
@@ -1445,6 +1488,14 @@ async function addRecipe() {
   document.getElementById('rcDishCustom').style.display = 'none';
   closeAdd('rcFormWrap', 'rcAddBtn', '+ Добавить рецепт');
   dayCache = {}; renderRecipes(); toast('Рецепт сохранён и прикреплён');
+}
+function editAttach(id) { st.editRec = id; renderRecipes(); }
+async function saveAttach(id) {
+  const dish = document.getElementById('attachSel').value;
+  try { await api(`/api/recipes/attach?id=${id}&dish=${encodeURIComponent(dish)}`, {method: 'POST'}); }
+  catch (e) { return toast(e.message); }
+  st.editRec = null; resetCaches(); renderRecipes();
+  toast(`Рецепт прикреплён к «${dish}»`);
 }
 function delRecipe(id) {
   ask('Удалить рецепт?', async () => {
