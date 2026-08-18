@@ -435,6 +435,21 @@ body.tg{padding:0;background:var(--bg);
     <div class="card"><button class="btn gh add-toggle" id="genBtn" onclick="genMenu()">🎲 Сгенерировать меню на неделю</button></div>
     <div id="genPreview" style="display:none"></div>
 
+    <div class="sect">Общее меню</div>
+    <div class="card" id="shareList"><div class="empty">Загрузка…</div></div>
+    <div class="card"><button class="btn gh add-toggle" id="shAddBtn"
+      onclick="toggleAdd('shFormWrap','shAddBtn','+ Поделиться меню')">+ Поделиться меню</button></div>
+    <div id="shFormWrap" style="display:none">
+      <div class="card"><div class="frm">
+        <input id="shUser" placeholder="@username или ID пользователя">
+        <button class="btn pri" onclick="addShare()">Поделиться</button>
+        <div style="font-size:12px;color:var(--ink3)">Человек увидит твои планы как свои:
+          что загрузишь ты, то будет и у него. Замены блюд, напоминания и БАДы у каждого свои.
+          Он должен был хотя бы раз открыть бота.</div>
+      </div></div>
+    </div>
+
+    <div class="sect">Добавить план</div>
     <div class="card"><button class="btn gh add-toggle" id="impBtn"
       onclick="toggleAdd('impFormWrap','impBtn','➕ Добавить план — файл или текст')">➕ Добавить план — файл или текст</button></div>
     <div id="impFormWrap" style="display:none">
@@ -1563,6 +1578,44 @@ function delPlanRecipe(id) {
   });
 }
 
+/* ---------- общее меню ---------- */
+async function renderShare() {
+  let r;
+  try { r = await api('/api/share'); } catch (e) {
+    document.getElementById('shareList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+    return;
+  }
+  const name = x => [x.first_name, x.last_name].filter(Boolean).join(' ')
+    || (x.username ? '@' + x.username : 'id ' + x.id);
+  const rows = r.shared_with.map(x => `<div class="chk" style="cursor:default">
+      <span class="lbl">${esc(name(x))}${x.username ? ` <span class="meta">@${esc(x.username)}</span>` : ''}
+        <span class="meta">видит твои планы</span></span>
+      <button class="btn" style="padding:4px 9px;font-size:12px;color:var(--red)"
+        onclick="stopShare(${x.id})">Отключить</button>
+    </div>`).join('');
+  const from = r.owner ? `<div class="chk" style="cursor:default">
+      <span class="lbl">Меню как у ${esc(name(r.owner))}
+        <span class="meta">планы приходят от него</span></span></div>` : '';
+  document.getElementById('shareList').innerHTML = from + rows ||
+    '<div class="empty">Пока ни с кем не поделился. Планы у каждого свои.</div>';
+}
+async function addShare() {
+  const u = document.getElementById('shUser').value.trim();
+  if (!u) return toast('Впиши @username или ID');
+  try { await api('/api/share/add?username=' + encodeURIComponent(u), {method: 'POST'}); }
+  catch (e) { return toast(e.message); }
+  document.getElementById('shUser').value = '';
+  closeAdd('shFormWrap', 'shAddBtn', '+ Поделиться меню');
+  renderShare(); toast('Готово — теперь у него твоё меню');
+}
+function stopShare(id) {
+  ask('Отключить общее меню?', async () => {
+    try { await api('/api/share/stop?follower_id=' + id, {method: 'POST'}); }
+    catch (e) { return toast(e.message); }
+    renderShare(); toast('Общее меню отключено');
+  });
+}
+
 /* ---------- импорт плана из файла/текста (Профиль) ---------- */
 async function importPlan() {
   const f = document.getElementById('impFile').files[0];
@@ -1696,6 +1749,7 @@ async function renderUsers() {
 }
 
 async function renderPlans() {
+  renderShare();
   let p;
   try { p = await api('/api/plans'); } catch (e) {
     document.getElementById('myPlans').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
@@ -1703,7 +1757,8 @@ async function renderPlans() {
   }
   const row = x => `<div class="chk" style="cursor:default">
       <span class="lbl">${esc(x.title.replace(/\.(docx|txt)$/i, ''))}
-        <span class="meta">${x.days} дн. · ${x.shared ? 'общий план' : 'загружен ' + esc((x.created_at || '').slice(0, 10))}</span></span>
+        <span class="meta">${x.days} дн. · ${x.shared ? 'общий план'
+          : x.from_share ? 'из общего меню' : 'загружен ' + esc((x.created_at || '').slice(0, 10))}</span></span>
       ${x.active ? '<span class="tag">текущий</span>'
         : `<button class="btn" style="padding:4px 9px;font-size:12px" onclick="activatePlan(${x.id})">Выбрать</button>`}
       ${x.can_delete ? `<button class="btn" style="padding:4px 9px;font-size:12px;color:var(--red)" onclick="delPlan(${x.id})">Удалить</button>` : ''}

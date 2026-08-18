@@ -7,7 +7,7 @@ from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.db import (connect, init, current_plan, persons_of, set_current_plan,
                     set_persons, day_items, touch_user, MAX_UID_OFFSET,
-                    plan_for, monday_of)
+                    plan_for, monday_of, plan_scope, visible_plan, menu_owner)
 from datetime import timedelta
 from app.cooking import cook_plan, same_days
 from app.macros import day_macros
@@ -288,17 +288,19 @@ def plans_list(x_init_data: str = Header(None)):
     con = connect()
     cur = current_plan(con, uid)
     cur_id = cur["id"] if cur else None
+    scope = plan_scope(con, uid)
     rows = con.execute(
         "SELECT id, title, created_at, user_id,"
         " (SELECT COUNT(DISTINCT day_index) FROM plan_items WHERE plan_id=plans.id) days"
-        " FROM plans WHERE user_id=? OR user_id IS NULL"
-        " ORDER BY user_id IS NULL, id DESC", (uid,)).fetchall()
+        " FROM plans WHERE user_id IN (%s) OR user_id IS NULL"
+        " ORDER BY user_id IS NULL, id DESC" % ",".join("?" * len(scope)), scope).fetchall()
     plans = []
     for r in rows:
         d = dict(r)
         d["shared"] = r["user_id"] is None
         d["active"] = 1 if r["id"] == cur_id else 0
-        d["can_delete"] = not d["shared"] or uid in ADMINS
+        d["can_delete"] = (r["user_id"] == uid) or (d["shared"] and uid in ADMINS)
+        d["from_share"] = r["user_id"] is not None and r["user_id"] != uid
         del d["user_id"]
         plans.append(d)
     return {"plans": plans}
@@ -307,9 +309,7 @@ def plans_list(x_init_data: str = Header(None)):
 def plan_activate(id: int, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
     con = connect()
-    r = con.execute("SELECT id FROM plans WHERE id=? AND (user_id=? OR user_id IS NULL)",
-                    (id, uid)).fetchone()
-    if not r: raise HTTPException(404, "это не твой план")
+    if not visible_plan(con, uid, id): raise HTTPException(404, "это не твой план")
     set_current_plan(con, uid, id)
     con.commit(); return {"ok": True, "plan_id": id}
 
@@ -405,6 +405,57 @@ def plan_save_generated(payload: dict, x_init_data: str = Header(None)):
     con.commit()
     return {"ok": True, "plan_id": pid, "title": title}
 
+# ---------- общее меню ----------
+# «что я загружу, то и у него»: планы владельца автоматически становятся
+# меню получателя. Замены блюд, напоминания и БАДы у каждого свои.
+
+@app.get("/api/share")
+def share_list(x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect()
+    with_me = [dict(r) for r in con.execute(
+        "SELECT s.follower_id id, u.first_name, u.last_name, u.username"
+        " FROM menu_share s LEFT JOIN users u ON u.user_id = s.follower_id"
+        " WHERE s.owner_id=?", (uid,))]
+    o = menu_owner(con, uid)
+    owner = None
+    if o:
+        r = con.execute("SELECT user_id id, first_name, last_name, username"
+                        " FROM users WHERE user_id=?", (o,)).fetchone()
+        owner = dict(r) if r else {"id": o}
+    return {"shared_with": with_me, "owner": owner}
+
+@app.post("/api/share/add")
+def share_add(username: str, x_init_data: str = Header(None)):
+    """Поделиться своим меню с пользователем (по @username или ID)."""
+    uid = me(x_init_data)["id"]
+    q = username.strip().lstrip("@")
+    if not q: raise HTTPException(400, "укажи @username или ID")
+    con = connect()
+    row = None
+    if q.isdigit():
+        row = con.execute("SELECT user_id FROM users WHERE user_id=?", (int(q),)).fetchone()
+    if not row:
+        row = con.execute("SELECT user_id FROM users WHERE lower(username)=lower(?)",
+                          (q,)).fetchone()
+    if not row:
+        raise HTTPException(404, "такой пользователь ещё не заходил в бота")
+    fid = row["user_id"]
+    if fid == uid: raise HTTPException(400, "это ты сам")
+    con.execute("INSERT OR IGNORE INTO menu_share(owner_id, follower_id) VALUES(?,?)", (uid, fid))
+    # получатель начинает видеть твои планы: снимаем его прежний выбор
+    con.execute("UPDATE user_prefs SET current_plan_id=NULL WHERE user_id=?", (fid,))
+    con.execute("DELETE FROM week_plans WHERE user_id=?", (fid,))
+    con.commit()
+    return {"ok": True, "follower_id": fid}
+
+@app.post("/api/share/stop")
+def share_stop(follower_id: int, x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect()
+    con.execute("DELETE FROM menu_share WHERE owner_id=? AND follower_id=?", (uid, follower_id))
+    con.commit(); return {"ok": True}
+
 # ---------- план на неделю ----------
 
 @app.post("/api/week_plan")
@@ -413,9 +464,7 @@ def week_plan_set(week: int, plan_id: int, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
     if not (0 <= week <= 52): raise HTTPException(400, "неверная неделя")
     con = connect()
-    r = con.execute("SELECT id FROM plans WHERE id=? AND (user_id=? OR user_id IS NULL)",
-                    (plan_id, uid)).fetchone()
-    if not r: raise HTTPException(404, "это не твой план")
+    if not visible_plan(con, uid, plan_id): raise HTTPException(404, "это не твой план")
     ws = monday_of(date.today() + timedelta(weeks=week))
     con.execute("INSERT INTO week_plans(user_id, week_start, plan_id) VALUES(?,?,?)"
                 " ON CONFLICT(user_id, week_start) DO UPDATE SET plan_id=excluded.plan_id",

@@ -67,6 +67,11 @@ CREATE TABLE IF NOT EXISTS week_plans (             -- какой план вы�
   user_id INT, week_start TEXT, plan_id INT,        -- week_start = понедельник, YYYY-MM-DD
   PRIMARY KEY (user_id, week_start));
 
+CREATE TABLE IF NOT EXISTS menu_share (           -- общее меню: планы владельца видны получателю
+  owner_id INT, follower_id INT,
+  created_at TEXT DEFAULT (datetime('now')),
+  PRIMARY KEY (owner_id, follower_id));
+
 CREATE TABLE IF NOT EXISTS users (                  -- кто пользуется ботом/приложением
   user_id INTEGER PRIMARY KEY, first_name TEXT, last_name TEXT, username TEXT,
   first_seen TEXT DEFAULT (datetime('now')), last_seen TEXT, source TEXT);

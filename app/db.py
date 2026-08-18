@@ -55,13 +55,39 @@ def _migrate(con):
     con.execute("CREATE INDEX IF NOT EXISTS idx_rem_user ON user_reminders(user_id, enabled)")
 
 
-def current_plan(con, uid: int):
-    """Текущий план пользователя: выбранный им; иначе его последний; иначе общий."""
+def menu_owner(con, uid: int):
+    """С кем у пользователя общее меню: чьи планы он получает (или None)."""
+    r = con.execute("SELECT owner_id FROM menu_share WHERE follower_id=? LIMIT 1",
+                    (uid,)).fetchone()
+    return r["owner_id"] if r else None
+
+
+def plan_scope(con, uid: int):
+    """Чьи планы доступны пользователю: свои + владельца общего меню."""
+    o = menu_owner(con, uid)
+    return [uid, o] if o is not None else [uid]
+
+
+def visible_plan(con, uid: int, plan_id: int):
+    """План, если он доступен пользователю (свой, общий или владельца меню)."""
+    scope = plan_scope(con, uid)
+    q = "SELECT * FROM plans WHERE id=? AND (user_id IS NULL OR user_id IN (%s))" % (
+        ",".join("?" * len(scope)))
+    return con.execute(q, [plan_id] + scope).fetchone()
+
+
+def current_plan(con, uid: int, _depth: int = 0):
+    """Текущий план: выбранный им; иначе план владельца общего меню;
+    иначе его последний; иначе общий."""
     r = con.execute("SELECT current_plan_id FROM user_prefs WHERE user_id=?", (uid,)).fetchone()
     if r and r["current_plan_id"]:
-        p = con.execute("SELECT * FROM plans WHERE id=? AND (user_id IS NULL OR user_id=?)",
-                        (r["current_plan_id"], uid)).fetchone()
+        p = visible_plan(con, uid, r["current_plan_id"])
         if p: return p
+    if _depth == 0:                          # общее меню: берём выбор владельца
+        o = menu_owner(con, uid)
+        if o is not None:
+            p = current_plan(con, o, 1)
+            if p: return p
     p = con.execute("SELECT * FROM plans WHERE user_id=?"
                     " ORDER BY active DESC, id DESC LIMIT 1", (uid,)).fetchone()
     if p: return p
@@ -73,16 +99,20 @@ def monday_of(d: date) -> str:
     return (d - timedelta(days=d.weekday())).isoformat()
 
 
-def plan_for(con, uid: int, d: date):
-    """План на дату: назначенный на её неделю; для текущей и прошлых недель
-    без назначения — обычный текущий план; для будущих — None (неделя пустая)."""
+def plan_for(con, uid: int, d: date, _depth: int = 0):
+    """План на дату: свой выбор на неделю; иначе выбор владельца общего меню;
+    иначе текущий план; для будущих недель без плана — None."""
     ws = monday_of(d)
     r = con.execute("SELECT plan_id FROM week_plans WHERE user_id=? AND week_start=?",
                     (uid, ws)).fetchone()
     if r:
-        p = con.execute("SELECT * FROM plans WHERE id=? AND (user_id IS NULL OR user_id=?)",
-                        (r["plan_id"], uid)).fetchone()
+        p = visible_plan(con, uid, r["plan_id"])
         if p: return p
+    if _depth == 0:
+        o = menu_owner(con, uid)
+        if o is not None:
+            p = plan_for(con, o, d, 1)
+            if p: return p
     if ws <= monday_of(date.today()):
         return current_plan(con, uid)
     return None
