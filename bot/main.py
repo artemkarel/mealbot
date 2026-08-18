@@ -15,7 +15,6 @@ from import_plan import save
 from app.db import connect, current_plan, persons_of, set_current_plan, touch_user, MAX_UID_OFFSET
 from app.texts import (DAY_FULL, DAY_NAMES, day_menu_text, build_morning, build_evening,
                        build_meal, build_menu, build_shopping_note, user_tz, _minutes)
-from app.ai import ask_claude, ai_context, split_recipe, AI_SYSTEM, ANTHROPIC_KEY
 
 ROOT = Path(__file__).parent.parent
 
@@ -86,9 +85,7 @@ def admin(m: Message) -> bool:
 async def start(m: Message):
     if not allowed(m): return
     await reply_clean(m, "Пришли файл с планом от диетолога — разберу и открою.\n"
-                   "План, отметки и закупки у каждого пользователя свои.\n\n"
-                   "А ещё можно просто написать вопрос — например, «чем заменить киноа?» "
-                   "— отвечу как помощник, который знает твой план.", reply_markup=kb)
+                   "План, отметки и закупки у каждого пользователя свои.", reply_markup=kb)
 
 
 async def got_file(m: Message):
@@ -209,39 +206,14 @@ BOT_COMMANDS = [
 ]
 
 
-# ---------- ИИ-диетолог ----------
-# Любое текстовое сообщение боту — вопрос к Claude, который знает план пользователя.
-# Движок и промпт общие с мини-приложением — app/ai.py.
-
-AI_HISTORY = {}          # uid -> последние реплики диалога
-
-
-async def ai_chat(m: Message):
+async def on_text(m: Message):
+    """Свободный текст: подсказываем команды — вопросы больше не обрабатываем."""
     if not allowed(m) or not m.text:
         return
-    if m.text.startswith("/"):
-        return await reply_clean(m, "Такой команды нет. Просто напиши вопрос текстом — "
-                              "отвечу как помощник по твоему плану.")
-    if not ANTHROPIC_KEY:
-        return await reply_clean(m, "ИИ-помощник ещё не подключён: на сервере не задан "
-                              "ключ ANTHROPIC_API_KEY.")
-    uid = m.from_user.id
-    await bot.send_chat_action(m.chat.id, "typing")
-    hist = AI_HISTORY.setdefault(uid, [])
-    hist.append({"role": "user", "content": m.text[:2000]})
-    del hist[:-8]                       # короткая память: последние 4 пары реплик
-    system = AI_SYSTEM + "\n\n" + ai_context(uid)
-    try:
-        answer = await ask_claude(system, list(hist))
-    except Exception as e:
-        hist.pop()
-        return await reply_clean(m, f"Не получилось спросить помощника: {e}")
-    if not answer:
-        hist.pop()
-        return await reply_clean(m, "Помощник промолчал — попробуй переформулировать.")
-    hist.append({"role": "assistant", "content": answer})
-    text, _ = split_recipe(answer)   # служебный блок рецепта показываем только в приложении
-    await reply_clean(m, text[:4000])
+    await reply_clean(m, "Я показываю твой план питания.\n"
+                         "/today — что сегодня, /tomorrow — что завтра.\n"
+                         "Планы, закупки и напоминания — в приложении (кнопка ниже).",
+                      reply_markup=kb)
 
 
 # ---------- напоминания ----------
@@ -319,7 +291,7 @@ async def main():
     dp.message.register(cmd_update, Command("update"))
     dp.message.register(cmd_restart, Command("restart"))
     dp.message.register(got_file, F.document)
-    dp.message.register(ai_chat, F.text)      # всё остальное — вопрос ИИ-помощнику
+    dp.message.register(on_text, F.text)      # всё остальное — короткая подсказка
     await bot.set_my_commands(BOT_COMMANDS)   # заменяет список команд старого бота
     asyncio.create_task(reminder_loop())
     await dp.start_polling(bot)

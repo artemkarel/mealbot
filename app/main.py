@@ -621,37 +621,6 @@ def swap_revert(day: int, meal: str, week: int = 0, x_init_data: str = Header(No
                 (uid, plan["id"], day, meal))
     con.commit(); return {"ok": True}
 
-# ---------- ИИ-диетолог ----------
-
-@app.post("/api/ai")
-async def ai_chat(payload: dict, x_init_data: str = Header(None)):
-    """Чат с онлайн-диетологом. История хранится у клиента и приходит с запросом."""
-    uid = me(x_init_data)["id"]
-    msg = str(payload.get("message") or "").strip()[:2000]
-    if not msg: raise HTTPException(400, "напиши вопрос")
-    if not ai.ANTHROPIC_KEY:
-        raise HTTPException(503, "ИИ-помощник не подключён (нет ANTHROPIC_API_KEY)")
-    # история: только валидные реплики, строго чередующиеся, начиная с user
-    clean = []
-    for h in (payload.get("history") or [])[-8:]:
-        role, content = h.get("role"), str(h.get("content") or "").strip()[:2000]
-        if role not in ("user", "assistant") or not content: continue
-        if clean and clean[-1]["role"] == role:
-            clean[-1] = {"role": role, "content": content}
-        else:
-            clean.append({"role": role, "content": content})
-    while clean and clean[0]["role"] != "user": clean.pop(0)
-    if clean and clean[-1]["role"] == "user": clean.pop()
-    clean.append({"role": "user", "content": msg})
-    try:
-        answer = await ai.ask_claude(ai.AI_SYSTEM + "\n\n" + ai.ai_context(uid), clean)
-    except Exception as e:
-        raise HTTPException(502, f"не получилось спросить: {e}")
-    if not answer:
-        raise HTTPException(502, "помощник промолчал — попробуй переформулировать")
-    text, recipe = ai.split_recipe(answer)
-    return {"answer": text, "recipe": recipe}
-
 # ---------- напоминания ----------
 
 @app.get("/api/reminders")

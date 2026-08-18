@@ -1,4 +1,4 @@
-"""Бот в мессенджере MAX: те же команды, ИИ-диетолог и напоминания, общая база.
+"""Бот в мессенджере MAX: команды меню и напоминания, общая база с Telegram.
 
 Пользователи MAX хранятся с общим сдвигом id (MAX_UID_OFFSET), поэтому их планы,
 настройки и напоминания живут в тех же таблицах и работают в том же приложении.
@@ -12,7 +12,6 @@ import aiohttp
 from app.db import connect, current_plan, persons_of, touch_user, MAX_UID_OFFSET
 from app.texts import (day_menu_text, build_morning, build_evening, build_meal,
                        build_menu, build_shopping_note, user_tz, _minutes)
-from app.ai import ask_claude, ai_context, split_recipe, AI_SYSTEM, ANTHROPIC_KEY
 
 TOKEN = os.getenv("MAX_BOT_TOKEN", "").strip()
 BASE = os.getenv("MAX_API_BASE", "https://platform-api2.max.ru").rstrip("/")
@@ -90,13 +89,9 @@ async def reply_clean(chat_id, incoming_mid, text, with_kb=True):
 
 # ---------- обработка сообщений ----------
 
-AI_HISTORY = {}
-
-START_TEXT = ("Привет! Я помогаю питаться по плану диетолога.\n\n"
+START_TEXT = ("Привет! Я показываю твой план питания.\n\n"
               "Команды: /today — меню на сегодня, /tomorrow — на завтра.\n"
-              "А ещё можно просто написать вопрос о питании — отвечу как "
-              "ИИ-диетолог, который знает твой план.\n\n"
-              "Планы, настройки и напоминания — в приложении по кнопке ниже.")
+              "Планы, закупки и напоминания — в приложении по кнопке ниже.")
 
 
 async def handle_message(msg):
@@ -136,30 +131,7 @@ async def handle_message(msg):
         return await reply_clean(chat_id, mid,
             f"{head}\nЧеловек: {persons_of(con, uid)}, напоминаний: {rems}\n"
             "Настройки — в приложении (кнопка ниже).")
-    if cmd:
-        return await reply_clean(chat_id, mid,
-            "Такой команды нет. Просто напиши вопрос текстом — отвечу как диетолог.")
-    if not text:
-        return await reply_clean(chat_id, mid,
-            "Пока понимаю только текст. Файлы плана можно добавить в приложении "
-            "(кнопка ниже) — файлом, фото или текстом.")
-    if not ANTHROPIC_KEY:
-        return await reply_clean(chat_id, mid,
-            "ИИ-помощник ещё не подключён на сервере.")
-    hist = AI_HISTORY.setdefault(uid, [])
-    hist.append({"role": "user", "content": text[:2000]})
-    del hist[:-8]
-    try:
-        answer = await ask_claude(AI_SYSTEM + "\n\n" + ai_context(uid), list(hist))
-    except Exception as e:
-        hist.pop()
-        return await reply_clean(chat_id, mid, f"Не получилось спросить помощника: {e}")
-    if not answer:
-        hist.pop()
-        return await reply_clean(chat_id, mid, "Помощник промолчал — попробуй переформулировать.")
-    hist.append({"role": "assistant", "content": answer})
-    clean, _ = split_recipe(answer)
-    await reply_clean(chat_id, mid, clean[:3900])
+    await reply_clean(chat_id, mid, START_TEXT)
 
 
 async def handle_update(u):
