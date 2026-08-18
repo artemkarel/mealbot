@@ -4,6 +4,7 @@
 (калорийность при готовке сохраняется). unit_g переводит штуки в граммы.
 """
 from app.cooking import _resolve
+from app import ref
 
 
 def item_macros(con, name, q, unit):
@@ -17,7 +18,7 @@ def item_macros(con, name, q, unit):
         if not d["product"]:
             known = known or d["type"] == "напиток"   # вода/чай — честный ноль
             continue
-        prod = con.execute("SELECT * FROM products WHERE id=?", (d["product"],)).fetchone()
+        prod = ref.product(d["product"])
         if not prod or prod["kcal"] is None:
             continue
         unit_g = prod["unit_g"] or 1

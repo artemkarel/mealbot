@@ -1,10 +1,10 @@
 """Пересчёт сырого и готового веса + план готовки на 1 или 2 дня."""
 from app.db import connect
+from app import ref
 
 def _resolve(con, name):
     """Название из плана -> строки справочника (у составного блюда их несколько)."""
-    rows = con.execute("SELECT * FROM dishes WHERE dish=?", (name,)).fetchall()
-    return [dict(r) for r in rows]
+    return ref.dishes_of(name)
 
 def cook_plan(plan_id: int, day_index: int, days: int = 1, persons: int = 1, items=None):
     """Что и сколько готовить. days=2 — сразу на два одинаковых дня.
@@ -22,7 +22,7 @@ def cook_plan(plan_id: int, day_index: int, days: int = 1, persons: int = 1, ite
     for it in items:
         for d in _resolve(con, it["name"]):
             if not d["product"]: continue
-            prod = con.execute("SELECT * FROM products WHERE id=?", (d["product"],)).fetchone()
+            prod = ref.product(d["product"])
             if not prod: continue
             cooked = (it["q"] or 0) * days * persons
             unit = it["unit"]
@@ -54,8 +54,12 @@ def cook_plan(plan_id: int, day_index: int, days: int = 1, persons: int = 1, ite
         del a["fixed"]
     return sorted(agg.values(), key=lambda x: -(x["cooked"] if x["cooked"] is not None else x["raw"]))
 
+_same_cache = {}
+
 def same_days(plan_id: int):
     """Пары одинаковых дней -> {day_index: [индексы дублей]}"""
+    if plan_id in _same_cache:
+        return _same_cache[plan_id]
     con = connect()
     sig = {}
     for r in con.execute("SELECT day_index, name, qty_max, unit FROM plan_items"
@@ -63,4 +67,6 @@ def same_days(plan_id: int):
         sig.setdefault(r["day_index"], []).append(f'{r["name"]}|{r["qty_max"]}{r["unit"]}')
     groups = {}
     for k, v in sig.items(): groups.setdefault(tuple(v), []).append(k)
-    return {d: [x for x in g if x != d] for g in groups.values() if len(g) > 1 for d in g}
+    res = {d: [x for x in g if x != d] for g in groups.values() if len(g) > 1 for d in g}
+    _same_cache[plan_id] = res
+    return res

@@ -2,7 +2,8 @@
 from __future__ import annotations
 import os, json, random
 from datetime import date
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
+from fastapi.middleware.gzip import GZipMiddleware
 from fastapi.staticfiles import StaticFiles
 from app.db import (connect, init, current_plan, persons_of, set_current_plan,
                     set_persons, day_items, touch_user, MAX_UID_OFFSET,
@@ -16,6 +17,19 @@ from app import auth
 
 init()
 app = FastAPI(title="Meal plan")
+# сжатие: index.html ~100 КБ -> ~20 КБ, JSON тоже
+app.add_middleware(GZipMiddleware, minimum_size=600)
+
+@app.middleware("http")
+async def cache_headers(request: Request, call_next):
+    resp = await call_next(request)
+    path = request.url.path
+    if path.startswith("/api/"):
+        resp.headers["Cache-Control"] = "no-store"
+    else:
+        # статика: браузер переспрашивает по ETag и обычно получает пустой 304
+        resp.headers["Cache-Control"] = "no-cache"
+    return resp
 DEV = os.getenv("DEV", "0") == "1"
 ADMINS = {int(x) for x in os.getenv("ADMIN_USER_IDS", "").replace(" ", "").split(",") if x}
 if DEV: ADMINS.add(0)
@@ -60,27 +74,25 @@ def week_plan(con, uid: int, week: int):
     """План на неделю с офсетом от текущей (0 = эта неделя). None — неделя пустая."""
     return plan_for(con, uid, date.today() + timedelta(weeks=max(0, min(52, week))))
 
-@app.get("/api/today")
-def today(day: int = 0, week: int = 0, x_init_data: str = Header(None)):
-    uid = me(x_init_data)["id"]
-    con = connect()
-    plan = week_plan(con, uid, week)
-    ws = monday_of(date.today() + timedelta(weeks=week))
-    if not plan:                                   # будущая неделя без плана — выбор
-        return {"plan": None, "week_start": ws, "persons": persons_of(con, uid),
-                "day": day, "day_name": None, "meals": [], "logs": {}, "prep": [],
-                "macros": {"total": {"kcal": 0}, "meals": {}, "unknown": 0}, "same_as": []}
-    items = day_items(con, uid, plan["id"], day)   # с учётом замен приёмов
-    # базовые рецепты (plan_id IS NULL) перекрываются рецептами конкретного плана
+def _empty_day(con, uid, day, ws):
+    return {"plan": None, "week_start": ws, "persons": persons_of(con, uid),
+            "day": day, "day_name": None, "meals": [], "logs": {}, "prep": [],
+            "macros": {"total": {"kcal": 0}, "meals": {}, "unknown": 0}, "same_as": []}
+
+def _recipes_map(con, uid, plan_id):
+    """Рецепты для блюд: базовые < из плана < свои. Читаем один раз на запрос."""
     recipes = {r["dish"]: {"title": r["title"],
                            "ingredients": json.loads(r["ingredients_json"] or "[]"),
                            "steps": json.loads(r["steps_json"] or "[]")}
                for r in con.execute(
                    "SELECT * FROM recipes WHERE plan_id IS NULL OR plan_id=?"
-                   " ORDER BY plan_id IS NOT NULL", (plan["id"],))}
-    # свои рецепты пользователя перекрывают рецепты из файла плана
+                   " ORDER BY plan_id IS NOT NULL", (plan_id,))}
     for r in con.execute("SELECT * FROM user_recipes WHERE user_id=?", (uid,)):
         recipes[r["dish"]] = _user_recipe(r)
+    return recipes
+
+def _day_payload(con, uid, plan, day, ws, persons, recipes, logs_all, prep_all, dups):
+    items = day_items(con, uid, plan["id"], day)   # с учётом замен приёмов
     meals: dict = {}
     for r in items:
         m = meals.setdefault(r["meal"], {"meal": r["meal"], "optional": r["optional"],
@@ -89,16 +101,51 @@ def today(day: int = 0, week: int = 0, x_init_data: str = Header(None)):
         m["items"].append({"name": r["name"], "qty_min": r["qty_min"],
                            "qty_max": r["qty_max"], "unit": r["unit"], "url": r["url"],
                            "recipe": recipes.get(r["name"])})
+    return {"plan": plan["title"], "week_start": ws, "persons": persons,
+            "day": day, "day_name": items[0]["day_name"] if items else None,
+            "meals": list(meals.values()), "logs": logs_all.get(day, {}),
+            "prep": prep_all.get(day, []),
+            "macros": day_macros(con, items),
+            "same_as": dups.get(day, [])}
+
+@app.get("/api/today")
+def today(day: int = 0, week: int = 0, x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect()
+    plan = week_plan(con, uid, week)
+    ws = monday_of(date.today() + timedelta(weeks=week))
+    if not plan:                                   # будущая неделя без плана — выбор
+        return _empty_day(con, uid, day, ws)
     logs = {r["meal"]: r["status"] for r in con.execute(
         "SELECT meal, status FROM meal_logs WHERE plan_id=? AND day_index=? AND user_id=?",
         (plan["id"], day, uid))}
     prep = [dict(r) for r in con.execute(
         "SELECT * FROM prep_tasks WHERE plan_id=? AND day_index=?", (plan["id"], day))]
-    return {"plan": plan["title"], "week_start": ws, "persons": persons_of(con, uid),
-            "day": day, "day_name": items[0]["day_name"] if items else None,
-            "meals": list(meals.values()), "logs": logs, "prep": prep,
-            "macros": day_macros(con, items),
-            "same_as": same_days(plan["id"]).get(day, [])}
+    return _day_payload(con, uid, plan, day, ws, persons_of(con, uid),
+                        _recipes_map(con, uid, plan["id"]), {day: logs}, {day: prep},
+                        same_days(plan["id"]))
+
+@app.get("/api/week")
+def week_days(week: int = 0, x_init_data: str = Header(None)):
+    """Все 7 дней одним ответом — приложению не нужно слать семь запросов."""
+    uid = me(x_init_data)["id"]
+    con = connect()
+    plan = week_plan(con, uid, week)
+    ws = monday_of(date.today() + timedelta(weeks=week))
+    if not plan:
+        return {"days": [_empty_day(con, uid, d, ws) for d in range(7)]}
+    persons = persons_of(con, uid)
+    recipes = _recipes_map(con, uid, plan["id"])
+    logs_all: dict = {}
+    for r in con.execute("SELECT day_index, meal, status FROM meal_logs"
+                         " WHERE plan_id=? AND user_id=?", (plan["id"], uid)):
+        logs_all.setdefault(r["day_index"], {})[r["meal"]] = r["status"]
+    prep_all: dict = {}
+    for r in con.execute("SELECT * FROM prep_tasks WHERE plan_id=?", (plan["id"],)):
+        prep_all.setdefault(r["day_index"], []).append(dict(r))
+    dups = same_days(plan["id"])
+    return {"days": [_day_payload(con, uid, plan, d, ws, persons, recipes,
+                                  logs_all, prep_all, dups) for d in range(7)]}
 
 @app.get("/api/cook")
 def cook(day: int = 0, days: int = 1, week: int = 0, x_init_data: str = Header(None)):

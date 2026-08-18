@@ -1,6 +1,7 @@
 """Список закупок: агрегация продуктов, деление по срокам хранения, округление до фасовки."""
 from app.db import connect
 from app.cooking import _resolve
+from app import ref
 
 def build(plan_id: int, day_from=0, day_to=6, persons=1, split_after=2, items=None):
     """split_after — последний день первой закупки (0=Пн, 2=Ср).
@@ -19,7 +20,7 @@ def build(plan_id: int, day_from=0, day_to=6, persons=1, split_after=2, items=No
     for r in rows:
         for d in _resolve(con, r["name"]):
             if not d["product"] or d["type"] == "напиток": continue
-            prod = con.execute("SELECT * FROM products WHERE id=?", (d["product"],)).fetchone()
+            prod = ref.product(d["product"])
             if not prod: continue
             cooked = (r["q"] or 0) * persons
             # план считает штуками, а продукт в граммах (тартин, онигири) — переводим

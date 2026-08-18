@@ -1,8 +1,24 @@
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
 <title>План питания</title>
-<script src="https://telegram.org/js/telegram-web-app.js"></script>
-<script src="https://st.max.ru/js/max-web-app.js"></script>
+<link rel="preconnect" href="https://telegram.org" crossorigin>
+<script>
+// подпись входа доступна сразу из адреса — ждать 116 КБ SDK для первого экрана не нужно
+window.__initHdr = (function () {
+  try {
+    const h = location.hash.slice(1);
+    if (!h) return '';
+    const p = new URLSearchParams(h);
+    const tgd = p.get('tgWebAppData');
+    if (tgd) return tgd;
+    if (p.get('hash') && p.get('user')) return 'max ' + h;
+  } catch (e) {}
+  return '';
+})();
+window.__sdkReady = function () { if (window.__onSdk) window.__onSdk(); };
+</script>
+<script async src="https://telegram.org/js/telegram-web-app.js" onload="window.__sdkReady()"></script>
+<script async src="https://st.max.ru/js/max-web-app.js" onload="window.__sdkReady()"></script>
 <style>
 :root{
   --bg:#ECEEEA; --card:#fff; --ink:#16191A; --ink2:#6E7671; --ink3:#9AA19C;
@@ -516,35 +532,37 @@ body.tg{padding:0;background:var(--bg);
 
 <script>
 /* ---------- API ---------- */
-const tg = window.Telegram && window.Telegram.WebApp;
-// мини-приложение внутри мессенджера MAX (MAX Bridge даёт window.WebApp)
-const maxApp = (!tg || !tg.initData) && window.WebApp && window.WebApp.initData
-  ? window.WebApp : null;
-if (maxApp) {
-  document.body.classList.add('tg');            // тот же цельный лист без рамки
-  if (maxApp.BackButton) {
-    maxApp.BackButton.onClick(() => { if (nav.stack.length) back(); });
+let tg = null, maxApp = null;
+function applySdk() {
+  tg = (window.Telegram && window.Telegram.WebApp) || null;
+  maxApp = (!tg || !tg.initData) && window.WebApp && window.WebApp.initData ? window.WebApp : null;
+  if (maxApp) {
+    document.body.classList.add('tg');           // тот же цельный лист без рамки
+    if (maxApp.BackButton) maxApp.BackButton.onClick(() => { if (nav.stack.length) back(); });
+  }
+  if (tg) {
+    tg.ready(); tg.expand();
+    if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();  // свайп вниз не закрывает
+    document.body.classList.add('tg');
+    const setInsets = () => {
+      const top = ((tg.safeAreaInset && tg.safeAreaInset.top) || 0) +
+                  ((tg.contentSafeAreaInset && tg.contentSafeAreaInset.top) || 0);
+      if (top) document.documentElement.style.setProperty('--top-inset', top + 'px');
+    };
+    setInsets();
+    if (tg.onEvent) {
+      tg.onEvent('safeAreaChanged', setInsets);
+      tg.onEvent('contentSafeAreaChanged', setInsets);
+    }
   }
 }
-if (tg) {
-  tg.ready(); tg.expand();
-  if (tg.disableVerticalSwipes) tg.disableVerticalSwipes();  // свайп вниз не закрывает приложение
-  document.body.classList.add('tg');                          // цельный лист без рамки
-  const setInsets = () => {
-    // отступ сверху под плавающие кнопки Telegram («Закрыть», «⋯»)
-    const top = ((tg.safeAreaInset && tg.safeAreaInset.top) || 0) +
-                ((tg.contentSafeAreaInset && tg.contentSafeAreaInset.top) || 0);
-    if (top) document.documentElement.style.setProperty('--top-inset', top + 'px');
-  };
-  setInsets();
-  if (tg.onEvent) {
-    tg.onEvent('safeAreaChanged', setInsets);
-    tg.onEvent('contentSafeAreaChanged', setInsets);
-  }
-}
+window.__onSdk = applySdk;
+applySdk();                                       // вдруг SDK уже успел загрузиться
+if (window.__initHdr) document.body.classList.add('tg');   // мессенджер виден по адресу
+
 async function api(path, opts = {}) {
   const r = await fetch(path, {...opts,
-    headers: {'X-Init-Data': (tg && tg.initData)
+    headers: {'X-Init-Data': window.__initHdr || (tg && tg.initData)
       || (maxApp ? 'max ' + maxApp.initData : ''), ...(opts.headers || {})}});
   if (!r.ok) {
     const e = await r.json().catch(() => ({}));
@@ -742,14 +760,27 @@ function paint() {
 }
 
 /* ---------- данные ---------- */
+const weekInflight = {};
+function loadWeekInto(w) {                 // один запрос на все 7 дней
+  if (weekInflight[w]) return weekInflight[w];
+  const pr = api('/api/week?week=' + w).then(r => {
+    r.days.forEach((dd, i) => dayCache[w + ':' + i] = dd);
+    P = r.days[0].persons;
+    if (r.days[0].plan) planTitle = r.days[0].plan.replace(/\.(docx|txt)$/i, '');
+    if (w === 0) { try { localStorage.setItem('wk0', JSON.stringify(r.days)); } catch (e) {} }
+    return r.days;
+  }).finally(() => { delete weekInflight[w]; });
+  weekInflight[w] = pr;
+  return pr;
+}
 async function loadDay(d) {
   const key = week + ':' + d;
-  if (!dayCache[key]) {
-    dayCache[key] = await api(`/api/today?day=${d}&week=${week}`);
-    P = dayCache[key].persons;
-    if (dayCache[key].plan) planTitle = dayCache[key].plan.replace(/\.(docx|txt)$/i, '');
-  }
+  if (!dayCache[key]) await loadWeekInto(week);
   return dayCache[key];
+}
+function prefetchWeek(w) {                 // соседняя неделя — заранее, в простое
+  if (w < 0 || w > MAX_WEEK || dayCache[w + ':0'] || weekInflight[w]) return;
+  (window.requestIdleCallback || setTimeout)(() => loadWeekInto(w).catch(() => {}), 400);
 }
 
 /* ---------- день ---------- */
@@ -794,7 +825,8 @@ function pageWeek(dir, targetDay) {
   const w = week + dir;
   if (w < 0 || w > MAX_WEEK) return;
   const track = document.querySelector('.days-track3');
-  const done = () => { week = w; day = targetDay; renderDays(); paint(); animToday(dir); };
+  const done = () => { week = w; day = targetDay; renderDays(); paint(); animToday(dir);
+                       prefetchWeek(w + dir); };
   if (track) {
     track.style.transition = 'transform .22s ease';
     track.style.transform = `translateX(${dir > 0 ? '-66.6666%' : '0%'})`;
@@ -850,7 +882,7 @@ document.getElementById('dayStrip').addEventListener('touchend', e => {
   s.track.style.transition = 'transform .22s ease';
   s.track.style.transform = `translateX(${dir === 1 ? '-66.6666%' : dir === -1 ? '0%' : '-33.3333%'})`;
   setTimeout(() => {
-    if (dir) { week += dir; day = 0; renderDays(); paint(); animToday(dir); }
+    if (dir) { week += dir; day = 0; renderDays(); paint(); animToday(dir); prefetchWeek(week + dir); }
     else renderDays();
   }, 230);
 }, {passive: true});
@@ -893,7 +925,15 @@ async function renderToday() {
     return;
   }
   if (supData === null) {
-    try { supData = (await api('/api/supplements')).supplements; } catch (e) { supData = []; }
+    try { supData = JSON.parse(localStorage.getItem('sup') || '[]'); } catch (e) { supData = []; }
+    api('/api/supplements').then(r => {                 // обновляем в фоне
+      const fresh = JSON.stringify(r.supplements);
+      if (fresh !== JSON.stringify(supData)) {
+        supData = r.supplements;
+        if (nav.tab === 'today' && !nav.stack.length) renderToday();
+      }
+      try { localStorage.setItem('sup', fresh); } catch (e) {}
+    }).catch(() => {});
   }
   document.getElementById('macroCard').innerHTML = macroCard(t.macros);
   recipeReg = [];
@@ -1588,7 +1628,10 @@ function cancelGen() {
 }
 
 /* ---------- профиль ---------- */
-function resetCaches() { dayCache = {}; shopData = null; cookCache = {}; }
+function resetCaches() {
+  dayCache = {}; shopData = null; cookCache = {};
+  try { localStorage.removeItem('wk0'); } catch (e) {}
+}
 function ask(msg, cb) {
   if (tg && tg.showConfirm) tg.showConfirm(msg, ok => ok && cb());
   else if (confirm(msg)) cb();
@@ -1792,10 +1835,27 @@ function sendTz() {
     api('/api/tz?tz=' + encodeURIComponent(tz || offStr), {method: 'POST'}).catch(() => {});
   } catch (e) {}
 }
+function mondayISO() {
+  const d = new Date();
+  d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  return d.getFullYear() + '-' + String(d.getMonth() + 1).padStart(2, '0')
+       + '-' + String(d.getDate()).padStart(2, '0');
+}
 (async function init() {
-  sendTz();
   moveTabInd(document.querySelector('.tabs button.on'));
-  try { await loadDay(day); } catch (e) { toast(e.message); }
+  let painted = false;
+  try {                                   // экран из прошлого запуска — сразу, без сети
+    const c = JSON.parse(localStorage.getItem('wk0') || 'null');
+    if (Array.isArray(c) && c.length === 7 && c[0].week_start === mondayISO()) {
+      c.forEach((dd, i) => dayCache['0:' + i] = dd);
+      P = c[0].persons;
+      if (c[0].plan) planTitle = c[0].plan.replace(/\.(docx|txt)$/i, '');
+      renderDays(); paint(); painted = true;
+    }
+  } catch (e) {}
+  try { await loadWeekInto(0); } catch (e) { if (!painted) toast(e.message); }
   renderDays(); paint();
+  sendTz();                               // пояс отправляем после первого экрана
+  prefetchWeek(1);
 })();
 </script>

@@ -23,6 +23,9 @@ def connect():
     con = sqlite3.connect(DB_PATH)
     con.row_factory = sqlite3.Row
     con.execute("PRAGMA foreign_keys=ON")
+    con.execute("PRAGMA synchronous=NORMAL")     # с WAL безопасно и заметно быстрее
+    con.execute("PRAGMA temp_store=MEMORY")
+    con.execute("PRAGMA cache_size=-16000")      # 16 МБ страниц в памяти
     _tls.con = con
     return con
 
@@ -44,6 +47,12 @@ def _migrate(con):
             con.execute(f"ALTER TABLE products ADD COLUMN {c} REAL")
     con.execute("CREATE INDEX IF NOT EXISTS idx_plans_user ON plans(user_id, active)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_purchases_user ON purchases(user_id, used)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_recipes_plan ON recipes(plan_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_recipes_dish ON recipes(dish)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_urecipes_user ON user_recipes(user_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_logs_plan_user ON meal_logs(plan_id, user_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_prep_plan ON prep_tasks(plan_id)")
+    con.execute("CREATE INDEX IF NOT EXISTS idx_rem_user ON user_reminders(user_id, enabled)")
 
 
 def current_plan(con, uid: int):
