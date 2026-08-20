@@ -35,7 +35,7 @@ DEV = os.getenv("DEV", "0") == "1"
 ADMINS = {int(x) for x in os.getenv("ADMIN_USER_IDS", "").replace(" ", "").split(",") if x}
 if DEV: ADMINS.add(0)
 
-MEALS = ["Завтрак", "Второй завтрак", "Обед", "Полдник", "Ужин", "Второй ужин"]
+from app.meals import MEALS, OPTIONAL as OPTIONAL_MEALS
 TIMINGS = ["до еды", "во время еды", "после еды"]
 KINDS = ["meal", "shopping", "morning", "evening", "menu"]
 
@@ -126,7 +126,7 @@ def today(day: int = 0, week: int = 0, x_init_data: str = Header(None)):
         "SELECT * FROM prep_tasks WHERE plan_id=? AND day_index=?", (plan["id"], day))]
     return _day_payload(con, uid, plan, day, ws, persons_of(con, uid),
                         _recipes_map(con, uid, plan["id"]), {day: logs}, {day: prep},
-                        same_days(plan["id"]))
+                        same_days(plan["id"], uid))
 
 @app.get("/api/week")
 def week_days(week: int = 0, x_init_data: str = Header(None)):
@@ -146,7 +146,7 @@ def week_days(week: int = 0, x_init_data: str = Header(None)):
     prep_all: dict = {}
     for r in con.execute("SELECT * FROM prep_tasks WHERE plan_id=?", (plan["id"],)):
         prep_all.setdefault(r["day_index"], []).append(dict(r))
-    dups = same_days(plan["id"])
+    dups = same_days(plan["id"], uid)
     return {"days": [_day_payload(con, uid, plan, d, ws, persons, recipes,
                                   logs_all, prep_all, dups) for d in range(7)]}
 
@@ -162,9 +162,10 @@ def cook(day: int = 0, days: int = 1, week: int = 0, x_init_data: str = Header(N
                               items=day_items(con, uid, plan["id"], day))}
 
 @app.get("/api/shopping")
-def shopping(x_init_data: str = Header(None)):
+def shopping(week: int = 0, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
-    con = connect(); plan = active_plan(con, uid)
+    con = connect()
+    plan = week_plan(con, uid, week) or active_plan(con, uid)
     week = [it for d in range(7) for it in day_items(con, uid, plan["id"], d)]
     res = build_shopping(plan["id"], persons=persons_of(con, uid), items=week)
     # где купить: правка пользователя > ссылка из плана > ссылка из справочника
@@ -174,7 +175,8 @@ def shopping(x_init_data: str = Header(None)):
     for part in (res["part1"], res["part2"]):
         for it in part:
             it["place"] = places.get(it["id"]) or plan_urls.get(it["id"]) or it["url"]
-    res["links"] = loose_links(con, plan["id"])    # ссылки диетолога без товара в справочнике
+    shown = {it["place"] for part in (res["part1"], res["part2"]) for it in part if it["place"]}
+    res["links"] = loose_links(con, plan["id"], shown)   # ссылки без товара в справочнике
     return res
 
 @app.post("/api/place")
@@ -347,8 +349,10 @@ def plan_generate(x_init_data: str = Header(None)):
     не перемешиваются), дни спарены Пн=Вт, Ср=Чт, Пт=Сб + отдельное воскресенье."""
     uid = me(x_init_data)["id"]
     con = connect()
+    scope = plan_scope(con, uid)
     plan_ids = [r["id"] for r in con.execute(
-        "SELECT id FROM plans WHERE user_id=? OR user_id IS NULL", (uid,))]
+        "SELECT id FROM plans WHERE user_id IN (%s) OR user_id IS NULL"
+        % ",".join("?" * len(scope)), scope)]
     pools: dict = {m: {} for m in MEALS}
     for pid in plan_ids:
         groups: dict = {}
@@ -528,10 +532,150 @@ async def plan_import(payload: dict, x_init_data: str = Header(None)):
                       (title, fname or "text", json.dumps(parsed, ensure_ascii=False)[:200000], uid))
     pid = cur.lastrowid
     saved = 0
-    save_links(con, pid, [l for d in days for l in (d.get("links") or [])
-                          + [x for m in (d.get("meals") or [])
-                             for x in (m.get("links") or [])]
-                          if isinstance(l, dict)])
+    for di, d in enumerate(days[:7]):
+        day_name = str(d.get("day") or DAY_NAMES_FULL[di])[:20]
+        for mi, m in enumerate((d.get("meals") or [])[:8]):
+            meal = str(m.get("meal") or "")[:30]
+            if meal not in MEALS: continue
+            for it in (m.get("items") or [])[:15]:
+                name = str(it.get("name") or "").strip()[:120]
+                if not name: continue
+                def num(v):
+                    try: return float(v)
+                    except (TypeError, ValueError): return None
+                con.execute(
+                    "INSERT INTO plan_items(plan_id,day_index,day_name,meal,meal_index,"
+                    "optional,name,qty_min,qty_max,unit) VALUES(?,?,?,?,?,?,?,?,?,?)",
+                    (pid, di, day_name, meal, mi, int(bool(m.get("optional"))),
+                     name, num(it.get("qty_min")), num(it.get("qty_max")),
+                     str(it.get("unit") or "")[:10] or None))
+    con.commit()
+    return {"ok": True, "plan_id": pid, "title": title}
+
+# ---------- общее меню ----------
+# «что я загружу, то и у него»: планы владельца автоматически становятся
+# меню получателя. Замены блюд, напоминания и БАДы у каждого свои.
+
+@app.get("/api/share")
+def share_list(x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect()
+    with_me = [dict(r) for r in con.execute(
+        "SELECT s.follower_id id, u.first_name, u.last_name, u.username"
+        " FROM menu_share s LEFT JOIN users u ON u.user_id = s.follower_id"
+        " WHERE s.owner_id=?", (uid,))]
+    o = menu_owner(con, uid)
+    owner = None
+    if o:
+        r = con.execute("SELECT user_id id, first_name, last_name, username"
+                        " FROM users WHERE user_id=?", (o,)).fetchone()
+        owner = dict(r) if r else {"id": o}
+    return {"shared_with": with_me, "owner": owner}
+
+@app.post("/api/share/add")
+def share_add(username: str, x_init_data: str = Header(None)):
+    """Поделиться своим меню с пользователем (по @username или ID)."""
+    uid = me(x_init_data)["id"]
+    q = username.strip().lstrip("@")
+    if not q: raise HTTPException(400, "укажи @username или ID")
+    con = connect()
+    row = None
+    if q.isdigit():
+        row = con.execute("SELECT user_id FROM users WHERE user_id=?", (int(q),)).fetchone()
+    if not row:
+        row = con.execute("SELECT user_id FROM users WHERE lower(username)=lower(?)",
+                          (q,)).fetchone()
+    if not row:
+        raise HTTPException(404, "такой пользователь ещё не заходил в бота")
+    fid = row["user_id"]
+    if fid == uid: raise HTTPException(400, "это ты сам")
+    con.execute("INSERT OR IGNORE INTO menu_share(owner_id, follower_id) VALUES(?,?)", (uid, fid))
+    # получатель начинает видеть твои планы: снимаем его прежний выбор
+    con.execute("UPDATE user_prefs SET current_plan_id=NULL WHERE user_id=?", (fid,))
+    con.execute("DELETE FROM week_plans WHERE user_id=?", (fid,))
+    con.commit()
+    return {"ok": True, "follower_id": fid}
+
+@app.post("/api/share/stop")
+def share_stop(follower_id: int, x_init_data: str = Header(None)):
+    uid = me(x_init_data)["id"]
+    con = connect()
+    con.execute("DELETE FROM menu_share WHERE owner_id=? AND follower_id=?", (uid, follower_id))
+    con.commit(); return {"ok": True}
+
+# ---------- план на неделю ----------
+
+@app.post("/api/week_plan")
+def week_plan_set(week: int, plan_id: int, x_init_data: str = Header(None)):
+    """Назначить план на неделю (с понедельника). week — офсет от текущей."""
+    uid = me(x_init_data)["id"]
+    if not (0 <= week <= 52): raise HTTPException(400, "неверная неделя")
+    con = connect()
+    if not visible_plan(con, uid, plan_id): raise HTTPException(404, "это не твой план")
+    ws = monday_of(date.today() + timedelta(weeks=week))
+    con.execute("INSERT INTO week_plans(user_id, week_start, plan_id) VALUES(?,?,?)"
+                " ON CONFLICT(user_id, week_start) DO UPDATE SET plan_id=excluded.plan_id",
+                (uid, ws, plan_id))
+    con.commit()
+    return {"ok": True, "week_start": ws}
+
+# ---------- импорт плана через ИИ ----------
+
+@app.post("/api/plans/import")
+async def plan_import(payload: dict, x_init_data: str = Header(None)):
+    """План из файла (PDF/Word/Excel/текст, base64) или вставленного текста.
+    Текст извлекаем сами, структуру дней и приёмов разбирает Claude."""
+    import base64
+    from app.import_ai import extract_text, parse_plan, parse_plan_image, image_media_type
+    uid = me(x_init_data)["id"]
+    if not ai.ANTHROPIC_KEY:
+        raise HTTPException(503, "распознавание не подключено (нет ANTHROPIC_API_KEY)")
+    text = str(payload.get("text") or "").strip()
+    fname = str(payload.get("filename") or "")[:120]
+    media = image_media_type(fname) if payload.get("data_b64") else None
+    if not text and not media and payload.get("data_b64"):
+        try:
+            raw = base64.b64decode(payload["data_b64"])
+        except Exception:
+            raise HTTPException(400, "файл не дошёл целиком — попробуй ещё раз")
+        if len(raw) > 15_000_000:
+            raise HTTPException(400, "файл слишком большой (до 15 МБ)")
+        try:
+            text = extract_text(fname, raw).strip()
+        except ValueError as e:
+            raise HTTPException(400, str(e))
+        except Exception as e:
+            raise HTTPException(400, f"не смог прочитать файл: {e}")
+    if not media and len(text) < 40:
+        raise HTTPException(400, "в документе не нашлось текста плана")
+    try:
+        if media:
+            if len(payload["data_b64"]) > 6_500_000:
+                raise ValueError("фото слишком большое — пришли поменьше")
+            parsed = await parse_plan_image(payload["data_b64"], media)
+        else:
+            parsed = await parse_plan(text)
+    except Exception as e:
+        raise HTTPException(422, f"ИИ не смог разобрать план: {e}")
+    days = parsed.get("days") or []
+    title = str(parsed.get("title") or "").strip()[:80] \
+        or (fname.rsplit(".", 1)[0] if fname else f"План от {date.today().strftime('%d.%m')}")
+    def num(v):
+        try: return float(v)
+        except (TypeError, ValueError): return None
+    con = connect()
+    cur = con.execute("INSERT INTO plans(title,source_file,raw_json,active,user_id)"
+                      " VALUES(?,?,?,0,?)",
+                      (title, fname or "text", json.dumps(parsed, ensure_ascii=False)[:200000], uid))
+    pid = cur.lastrowid
+    saved = 0
+    def _links_of(d):
+        out = list(d.get("links") or []) if isinstance(d.get("links"), list) else []
+        for m in (d.get("meals") or []):
+            if isinstance(m, dict) and isinstance(m.get("links"), list):
+                out += m["links"]
+        return [l for l in out if isinstance(l, dict)]
+    save_links(con, pid, [l for d in days[:7] for l in _links_of(d)])
     for di, d in enumerate(days[:7]):
         day_name = str(d.get("day") or DAY_NAMES_FULL[di])[:20]
         for mi, m in enumerate((d.get("meals") or [])[:8]):
@@ -550,6 +694,7 @@ async def plan_import(payload: dict, x_init_data: str = Header(None)):
                 saved += 1
                 note = None          # примечание достаточно хранить у первой позиции
     if not saved:
+        con.execute("DELETE FROM plan_links WHERE plan_id=?", (pid,))
         con.execute("DELETE FROM plans WHERE id=?", (pid,))
         con.commit()
         raise HTTPException(422, "ИИ не нашёл в документе ни одного блюда")
@@ -565,7 +710,10 @@ async def plan_import(payload: dict, x_init_data: str = Header(None)):
 def _meal_pool(con, uid: int, meal: str):
     """Все варианты приёма из доступных планов, дедуп по составу."""
     pool: dict = {}
-    for p in con.execute("SELECT id FROM plans WHERE user_id=? OR user_id IS NULL", (uid,)):
+    scope = plan_scope(con, uid)
+    q = ("SELECT id FROM plans WHERE user_id IN (%s) OR user_id IS NULL"
+         % ",".join("?" * len(scope)))
+    for p in con.execute(q, scope):
         groups: dict = {}
         for r in con.execute(
                 "SELECT day_index, name, qty_min, qty_max, unit FROM plan_items"
@@ -587,8 +735,15 @@ def meals_addable(day: int, week: int = 0, x_init_data: str = Header(None)):
     plan = week_plan(con, uid, week)
     if not plan: return {"meals": []}
     have = {r["meal"] for r in day_items(con, uid, plan["id"], day)}
-    pool = {m: len(_meal_pool(con, uid, m)) for m in MEALS if m not in have}
-    return {"meals": [m for m, n in pool.items() if n]}
+    missing = [m for m in MEALS if m not in have]
+    if not missing:
+        return {"meals": []}
+    scope = plan_scope(con, uid)
+    q = ("SELECT DISTINCT meal FROM plan_items WHERE meal IN (%s) AND plan_id IN"
+         " (SELECT id FROM plans WHERE user_id IN (%s) OR user_id IS NULL)"
+         % (",".join("?" * len(missing)), ",".join("?" * len(scope))))
+    found = {r["meal"] for r in con.execute(q, missing + scope)}
+    return {"meals": [m for m in missing if m in found]}
 
 @app.get("/api/swap/options")
 def swap_options(day: int, meal: str, week: int = 0, x_init_data: str = Header(None)):
@@ -604,10 +759,11 @@ def swap_options(day: int, meal: str, week: int = 0, x_init_data: str = Header(N
     swapped = bool(con.execute(
         "SELECT 1 FROM meal_overrides WHERE user_id=? AND plan_id=? AND day_index=? AND meal=?",
         (uid, plan["id"], day, meal)).fetchone())
-    in_plan = bool(con.execute(
+    in_plan = bool(con.execute(          # приём есть в самом плане диетолога
         "SELECT 1 FROM plan_items WHERE plan_id=? AND day_index=? AND meal=?",
         (plan["id"], day, meal)).fetchone())
-    return {"variants": variants[:3], "swapped": swapped, "in_plan": in_plan}
+    return {"variants": variants[:3], "swapped": swapped,
+            "in_plan": in_plan, "present": in_plan or swapped}
 
 @app.post("/api/swap")
 def swap_apply(payload: dict, x_init_data: str = Header(None)):

@@ -4,16 +4,18 @@
 сотни запросов. Теперь справочник читается один раз и живёт в памяти.
 """
 import time
-from app.db import connect, DB_PATH
+from app.db import connect
 
 _TTL = 300
 _cache = {"t": 0, "dishes": None, "products": None}
 
 
 def _mtime():
+    """Версия данных SQLite: растёт, когда записал другой процесс (например seed.py).
+    mtime файла для этого не годится — в режиме WAL он не меняется."""
     try:
-        return DB_PATH.stat().st_mtime
-    except OSError:
+        return connect().execute("PRAGMA data_version").fetchone()[0]
+    except Exception:
         return 0
 
 

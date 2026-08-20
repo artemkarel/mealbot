@@ -26,10 +26,14 @@ def resolve_product(con, label):
 
 
 def save_links(con, plan_id, links):
-    """links: [{"text": подпись, "url": адрес}] — пишем без дублей, с привязкой к товару."""
+    """links: [{"text"/"name": подпись, "url": адрес}] — без дублей, с привязкой к товару.
+
+    Правило-парсер отдаёт «text», разбор документов через ИИ — «name».
+    """
     seen, saved = set(), 0
     for l in links:
-        text, url = (l.get("text") or "").strip(), (l.get("url") or "").strip()
+        text = (l.get("text") or l.get("name") or "").strip()
+        url = (l.get("url") or "").strip()
         if not url or (text, url) in seen:
             continue
         seen.add((text, url))
@@ -39,11 +43,17 @@ def save_links(con, plan_id, links):
     return saved
 
 
-def loose_links(con, plan_id):
-    """Ссылки, для которых товар в справочнике не нашёлся."""
-    return [{"name": r["name"], "url": r["url"]} for r in con.execute(
-        "SELECT name, url FROM plan_links WHERE plan_id=? AND product IS NULL"
-        " AND name IS NOT NULL", (plan_id,))]
+def loose_links(con, plan_id, skip_urls=()):
+    """Ссылки, для которых товар в справочнике не нашёлся (без дублей)."""
+    out, seen = [], set(skip_urls)
+    for r in con.execute("SELECT name, url FROM plan_links"
+                         " WHERE plan_id=? AND product IS NULL", (plan_id,)):
+        if r["url"] in seen:
+            continue
+        seen.add(r["url"])
+        out.append({"name": r["name"] or r["url"].split("//")[-1].split("/")[0],
+                    "url": r["url"]})
+    return out
 
 
 def urls_by_product(con, plan_id):

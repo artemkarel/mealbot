@@ -59,19 +59,41 @@ _same_cache = {}
 
 def forget_plan(plan_id: int):
     """План переимпортировали или удалили — пересчитать одинаковые дни заново."""
-    _same_cache.pop(plan_id, None)
+    for k in [k for k in _same_cache if k[0] == plan_id]:
+        del _same_cache[k]
 
-def same_days(plan_id: int):
-    """Пары одинаковых дней -> {day_index: [индексы дублей]}"""
-    if plan_id in _same_cache:
-        return _same_cache[plan_id]
+
+def _stamp(con, plan_id):
+    """Дешёвая метка версии плана: переимпорт или замена блюда её меняют."""
+    r = con.execute("SELECT COUNT(*) c, COALESCE(MAX(id),0) m FROM plan_items"
+                    " WHERE plan_id=?", (plan_id,)).fetchone()
+    o = con.execute("SELECT COUNT(*) c, COALESCE(MAX(created_at),'') t FROM meal_overrides"
+                    " WHERE plan_id=?", (plan_id,)).fetchone()
+    return (r["c"], r["m"], o["c"], o["t"])
+
+
+def same_days(plan_id: int, uid: int = None):
+    """Пары одинаковых дней -> {day_index: [индексы дублей]}.
+
+    Считаем по тому меню, которое пользователь видит: замены и добавленные
+    приёмы тоже влияют на то, можно ли готовить один раз на два дня.
+    """
+    from app.db import day_items
     con = connect()
+    key = (plan_id, uid, _stamp(con, plan_id))
+    if key in _same_cache:
+        return _same_cache[key]
     sig = {}
-    for r in con.execute("SELECT day_index, name, qty_max, unit FROM plan_items"
-                         " WHERE plan_id=? ORDER BY day_index, id", (plan_id,)):
-        sig.setdefault(r["day_index"], []).append(f'{r["name"]}|{r["qty_max"]}{r["unit"]}')
+    for d in range(7):
+        rows = (day_items(con, uid, plan_id, d) if uid is not None else
+                [dict(r) for r in con.execute(
+                    "SELECT day_index, meal, name, qty_max, unit FROM plan_items"
+                    " WHERE plan_id=? AND day_index=? ORDER BY meal_index, id", (plan_id, d))])
+        sig[d] = [f'{r["meal"]}|{r["name"]}|{r["qty_max"]}{r["unit"]}' for r in rows]
     groups = {}
-    for k, v in sig.items(): groups.setdefault(tuple(v), []).append(k)
+    for k, v in sig.items():
+        if v: groups.setdefault(tuple(v), []).append(k)
     res = {d: [x for x in g if x != d] for g in groups.values() if len(g) > 1 for d in g}
-    _same_cache[plan_id] = res
+    _same_cache[key] = res
+    if len(_same_cache) > 200: _same_cache.clear()
     return res

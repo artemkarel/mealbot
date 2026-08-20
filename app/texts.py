@@ -78,7 +78,7 @@ def build_evening(uid: int) -> str:
     if prep:
         parts.append("🌙 Подготовить на завтра с вечера:\n" +
                      "\n".join(f"  • {r['text']}" for r in prep))
-    dup = same_days(plan["id"]).get(tomorrow, [])
+    dup = same_days(plan["id"], uid).get(tomorrow, [])
     after = [d for d in dup if d == tomorrow + 1]
     if after:
         parts.append(f"♻️ Завтра и в {DAY_NAMES[after[0]]} меню совпадает — "

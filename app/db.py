@@ -2,6 +2,7 @@
 import sqlite3, os, json, threading
 from datetime import date, timedelta
 from pathlib import Path
+from app.meals import ORDER as MEAL_ORDER, OPTIONAL as OPTIONAL_MEALS
 
 DB_PATH = Path(os.getenv("DB_PATH", "data/mealplan.db"))
 MAX_UID_OFFSET = 2_000_000_000_000   # id пользователей MAX — без пересечений с Telegram
@@ -48,9 +49,14 @@ def _migrate(con):
     cols = [r[1] for r in con.execute("PRAGMA table_info(plan_links)")]
     if cols and "product" not in cols:
         con.execute("ALTER TABLE plan_links ADD COLUMN product TEXT")
-    # старый импорт вешал первую ссылку приёма на все его позиции — такие url врут
-    con.execute("UPDATE plan_items SET url=NULL WHERE url IS NOT NULL AND plan_id NOT IN"
-                " (SELECT DISTINCT plan_id FROM plan_links)")
+    # старый импорт вешал первую ссылку приёма на все его позиции — такие url врут.
+    # Чистим один раз: NOT IN с NULL в подзапросе никогда не истинно, поэтому фильтруем.
+    if not con.execute("SELECT 1 FROM settings WHERE key='migr_url_cleanup'").fetchone():
+        con.execute("UPDATE plan_items SET url=NULL WHERE url IS NOT NULL AND plan_id NOT IN"
+                    " (SELECT plan_id FROM plan_links WHERE plan_id IS NOT NULL)")
+        con.execute("INSERT OR REPLACE INTO settings(key,value)"
+                    " VALUES('migr_url_cleanup','1')")
+    con.execute("DELETE FROM plan_links WHERE plan_id NOT IN (SELECT id FROM plans)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_plans_user ON plans(user_id, active)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_purchases_user ON purchases(user_id, used)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_recipes_plan ON recipes(plan_id)")
@@ -161,16 +167,20 @@ def day_items(con, uid: int, plan_id: int, day: int):
                             "qty_max": it.get("qty_max"), "unit": it.get("unit"),
                             "note": None, "url": None, "swapped": 1})
     # приём, которого в плане нет, а пользователь его добавил (например второй завтрак)
-    base = dict(rows[0]) if rows else {}
+    day_name = rows[0]["day_name"] if rows else None
     for m, items in ovs.items():
         if m in done:
             continue
         for it in items:
-            out.append({**base, "plan_id": plan_id, "day_index": day,
-                        "day_name": base.get("day_name"), "meal": m, "meal_index": 99,
-                        "optional": 0, "note": None, "url": None, "swapped": 1,
+            out.append({"id": None, "plan_id": plan_id, "day_index": day,
+                        "day_name": day_name, "meal": m,
+                        "meal_index": MEAL_ORDER.get(m, 99),
+                        "optional": 1 if m in OPTIONAL_MEALS else 0,
                         "name": it.get("name"), "qty_min": it.get("qty_min"),
-                        "qty_max": it.get("qty_max"), "unit": it.get("unit")})
+                        "qty_max": it.get("qty_max"), "unit": it.get("unit"),
+                        "raw_line": None, "note": None, "url": None, "swapped": 1})
+    # порядок приёмов должен быть привычным и в приложении, и в сообщениях ботов
+    out.sort(key=lambda r: (MEAL_ORDER.get(r["meal"], 99), r["meal_index"] or 0))
     return out
 
 

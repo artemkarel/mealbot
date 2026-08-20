@@ -26,6 +26,12 @@ def item_macros(con, name, q, unit):
             grams = d["amount"] * (unit_g if (d["unit"] or "") == "шт" else 1)
         else:
             raw = (q or 0) / d["coef"] if d["coef"] else (q or 0)
+            # coef из-за ОЧИСТКИ (кожура, корка, семена): несъедобная часть калорий
+            # не несёт — считаем по съеденному весу; закупка по-прежнему по сырому
+            note = (d["note"] or "").lower()
+            if d["coef"] and d["coef"] < 1 and any(w in note for w in
+                                                   ("очистк", "кожур", "корк", "семен")):
+                raw = (q or 0)
             grams = raw * (unit_g if (unit or "") == "шт" else 1)
         tot["kcal"] += grams / 100 * (prod["kcal"] or 0)
         tot["prot"] += grams / 100 * (prod["prot"] or 0)

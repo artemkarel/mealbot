@@ -13,7 +13,11 @@ from pathlib import Path
 
 DAYS = ["Понедельник", "Вторник", "Среда", "Четверг",
         "Пятница", "Суббота", "Воскресенье"]
-MEALS = ["Завтрак", "Второй завтрак", "Обед", "Полдник", "Ужин", "Второй ужин"]
+try:
+    from app.meals import MEALS, OPTIONAL
+except ImportError:            # запуск модуля напрямую
+    MEALS = ["Завтрак", "Второй завтрак", "Обед", "Полдник", "Ужин", "Второй ужин"]
+    OPTIONAL = {"Второй ужин"}
 
 # "Отварная гречка – 180 гр."   "Хлебцы ... – 2 шт."   "Кофе – 200 – 250 мл."
 DISH = re.compile(
@@ -75,10 +79,24 @@ def extract_text(path: str | Path) -> list[str]:
     return [l for l in (s.strip() for s in lines) if l]
 
 
+def _collect_links(raw: str) -> list[dict]:
+    """Ссылки строки вместе с подписью, которая идёт перед каждой из них."""
+    out, prev_end = [], 0
+    for mt in URL.finditer(raw):
+        label = raw[prev_end:mt.start()].lstrip("*").strip(" .-–—:")
+        label = re.sub(r"\s*\(.*?\)\s*$", "", label).strip()
+        if len(label) > 80:                    # это уже предложение, а не название товара
+            label = label.rsplit(".", 1)[-1].strip()[:80]
+        out.append({"text": label, "url": mt.group(0).rstrip(").,;")})
+        prev_end = mt.end()
+    return out
+
+
 def parse(lines: list[str]) -> dict:
     days: list[dict] = []
     day = meal = None
     in_recipe = False
+    stray_links: list[dict] = []          # ссылки из шапки плана и строк рецепта
 
     for raw in lines:
         clean = raw.lstrip("*").strip().rstrip(":")
@@ -90,7 +108,7 @@ def parse(lines: list[str]) -> dict:
             continue
 
         if clean in MEALS and raw.rstrip().endswith(":") and day is not None:
-            meal = {"meal": clean, "optional": clean == "Второй ужин",
+            meal = {"meal": clean, "optional": clean in OPTIONAL,
                     "items": [], "recipe": None, "notes": [],
                     "links": [], "prep": []}
             day["meals"].append(meal)
@@ -98,6 +116,7 @@ def parse(lines: list[str]) -> dict:
             continue
 
         if meal is None:
+            stray_links += _collect_links(raw)       # ссылки до первого приёма
             continue
 
         # начало блока рецепта
@@ -109,6 +128,8 @@ def parse(lines: list[str]) -> dict:
 
         # строка-ингредиент внутри рецепта (начинается с дефиса или маркера)
         if in_recipe and re.match(r"^[-–—•]\s", raw):
+            meal["links"] += _collect_links(raw)     # ссылка на товар в рецепте
+            raw = URL.sub("", raw).strip()
             body = re.sub(r"^[-–—•]\s*", "", raw).strip()
             m = DISH.match(body)
             if m:
@@ -122,14 +143,7 @@ def parse(lines: list[str]) -> dict:
                     {"name": body.rstrip("."), "qty": None, "unit": None})
             continue
 
-        prev_end = 0
-        for mt in URL.finditer(raw):               # в строке бывает несколько ссылок
-            label = raw[prev_end:mt.start()].lstrip("*").strip(" .-–—:")
-            label = re.sub(r"\s*\(.*?\)\s*$", "", label).strip()
-            if len(label) > 80:                    # это уже предложение, а не название товара
-                label = label.rsplit(".", 1)[-1].strip()[:80]
-            meal["links"].append({"text": label, "url": mt.group(0).rstrip(").,;")})
-            prev_end = mt.end()
+        meal["links"] += _collect_links(raw)       # в строке бывает несколько ссылок
         body = URL.sub("", raw).strip(" .-–—")
         if not body:
             continue
@@ -157,6 +171,8 @@ def parse(lines: list[str]) -> dict:
             if PREP.search(text):
                 meal["prep"].append(text)
 
+    if stray_links and days and days[0]["meals"]:
+        days[0]["meals"][0]["links"] += stray_links
     return {"days": days, "stats": stats(days)}
 
 

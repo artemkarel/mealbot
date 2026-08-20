@@ -777,8 +777,8 @@ function pageWeek(dir, targetDay) {
   const w = week + dir;
   if (w < 0 || w > MAX_WEEK) return;
   const track = document.querySelector('.days-track3');
-  const done = () => { week = w; day = targetDay; renderDays(); paint(); animToday(dir);
-                       prefetchWeek(w + dir); };
+  const done = () => { week = w; day = targetDay; shopData = null;
+                       renderDays(); paint(); animToday(dir); prefetchWeek(w + dir); };
   if (track) {
     track.style.transition = 'transform .22s ease';
     track.style.transform = `translateX(${dir > 0 ? '-66.6666%' : '0%'})`;
@@ -834,7 +834,8 @@ document.getElementById('dayStrip').addEventListener('touchend', e => {
   s.track.style.transition = 'transform .22s ease';
   s.track.style.transform = `translateX(${dir === 1 ? '-66.6666%' : dir === -1 ? '0%' : '-33.3333%'})`;
   setTimeout(() => {
-    if (dir) { week += dir; day = 0; renderDays(); paint(); animToday(dir); prefetchWeek(week + dir); }
+    if (dir) { week += dir; day = 0; shopData = null;
+               renderDays(); paint(); animToday(dir); prefetchWeek(week + dir); }
     else renderDays();
   }, 230);
 }, {passive: true});
@@ -850,6 +851,7 @@ function selDay(i) {
 }
 
 async function renderToday() {
+  document.getElementById('addMeal').innerHTML = '';
   let t;
   try { t = await loadDay(day); } catch (e) {
     document.getElementById('meals').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
@@ -921,6 +923,22 @@ async function renderToday() {
       ${m.note ? `<div style="padding:0 14px 12px;font-size:12.5px;color:var(--ink2)">${esc(m.note)}</div>` : ''}
     </div>`;
   }).join('') || '<div class="empty">На этот день в плане ничего нет</div>';
+
+  // БАДы, привязанные к приёму, которого сегодня нет — показываем отдельной карточкой
+  const haveMeals = new Set(t.meals.map(m => m.meal));
+  const orphan = supData.filter(s0 => !haveMeals.has(s0.meal));
+  if (orphan.length) {
+    const byMeal = {};
+    orphan.forEach(s0 => (byMeal[s0.meal] ||= []).push(s0));
+    document.getElementById('meals').insertAdjacentHTML('beforeend',
+      Object.keys(byMeal).sort((a, b) => MEAL_ORDER.indexOf(a) - MEAL_ORDER.indexOf(b)).map(mm =>
+        `<div class="card"><div class="meal-h"><span class="t" style="flex:1">${esc(mm)}</span>
+           <span class="time">нет в плане</span></div>
+         <div class="rows" style="padding-bottom:10px">${byMeal[mm].map(s0 =>
+           `<div class="row"><span class="n" style="color:var(--blue)">💊 ${esc(s0.name)}${
+             s0.dose ? ' — ' + esc(s0.dose) : ''}</span><span class="q">${esc(s0.timing)}</span></div>`).join('')}
+         </div></div>`).join(''));
+  }
 
   document.getElementById('addMeal').innerHTML = t.plan
     ? `<div class="card"><button class="btn gh add-toggle" onclick="openAddMeal()">+ Добавить приём</button></div>`
@@ -997,7 +1015,8 @@ async function planPayload(f) {
   return {filename: f.name, data_b64: await fileToB64(f)};
 }
 /* ---------- «не хочу это» — замена приёма ---------- */
-let swapMeal = null, swapVars = [], swapSel = null, swapWasSwapped = false, swapInPlan = true;
+let swapMeal = null, swapVars = [], swapSel = null, swapWasSwapped = false,
+    swapInPlan = true, swapPresent = true;
 function showSheet(html) {
   const wrap = document.getElementById('sheetWrap');
   document.getElementById('sheetBody').innerHTML = html;
@@ -1037,7 +1056,8 @@ async function openSwap(meal) {
     return showSheet(`<div class="empty">${esc(e.message)}</div>
       <div class="note-acts"><button class="btn" onclick="closeSheet()">Закрыть</button></div>`);
   }
-  swapVars = r.variants; swapWasSwapped = r.swapped; swapInPlan = r.in_plan !== false;
+  swapVars = r.variants; swapWasSwapped = r.swapped;
+  swapInPlan = r.in_plan !== false; swapPresent = r.present !== false;
   renderSwapSheet();
 }
 function renderSwapSheet() {
@@ -1051,7 +1071,7 @@ function renderSwapSheet() {
           `<div class="row"><span class="n">${esc(it.name)}</span>
            <span class="q num">${amt(it.qty_min, it.qty_max, it.unit)}</span></div>`).join('')}</div>
       </div></div>`).join('');
-  const add = !swapInPlan;
+  const add = !swapPresent;          // приёма в дне ещё нет
   showSheet(`<div style="font-weight:600;font-size:16px">${add ? 'Добавить' : 'Заменить'} «${esc(swapMeal)}»${add ? '' : '?'}</div>
     <div style="font-size:12.5px;color:var(--ink2);margin:3px 0 12px">Готовые приёмы из твоих
       планов — отметь подходящий и нажми «${add ? 'Добавить' : 'Заменить'}».</div>
@@ -1060,7 +1080,7 @@ function renderSwapSheet() {
       ${swapVars.length ? `<button class="btn pri" ${swapSel == null ? 'disabled' : ''}
           onclick="applySwap()">${add ? 'Добавить' : 'Заменить'}</button>
         <button class="btn" onclick="openSwap(swapMeal)">🎲 Ещё</button>` : ''}
-      ${swapWasSwapped ? `<button class="btn" onclick="revertSwap()">${add ? '🗑 Убрать приём' : '↩ Вернуть из плана'}</button>` : ''}
+      ${swapWasSwapped ? `<button class="btn" onclick="revertSwap()">${swapInPlan ? '↩ Вернуть из плана' : '🗑 Убрать приём'}</button>` : ''}
       <button class="btn" onclick="closeSheet()">Отмена</button></div>`);
   if (sh) sh.scrollTop = st0;
 }
@@ -1072,8 +1092,8 @@ async function applySwap() {
       body: JSON.stringify({day, week, meal: swapMeal, items: swapVars[swapSel].items})});
   } catch (e) { return toast(e.message); }
   closeSheet(); resetCaches(); renderToday();
-  toast(swapInPlan ? 'Приём заменён — закупки и готовка пересчитаны'
-                   : 'Приём добавлен — закупки и готовка пересчитаны');
+  toast(swapPresent ? 'Приём заменён — закупки и готовка пересчитаны'
+                    : 'Приём добавлен — закупки и готовка пересчитаны');
 }
 async function revertSwap() {
   try { await api(`/api/swap/revert?day=${day}&meal=${encodeURIComponent(swapMeal)}&week=${week}`, {method: 'POST'}); }
@@ -1257,11 +1277,11 @@ async function renderShop() {
     b.classList.toggle('on', (i === 0) === (st.shopGroup === 'cat')));
   let s;
   try {
-    s = shopData || (shopData = await api('/api/shopping'));
+    s = shopData || (shopData = await api('/api/shopping?week=' + week));
     // кэш для магазина без связи: галочки и так живут в телефоне
-    try { localStorage.setItem('shopCache2', JSON.stringify(s)); } catch (e) {}
+    try { localStorage.setItem('shopCache2:' + week, JSON.stringify(s)); } catch (e) {}
   } catch (e) {
-    const c = localStorage.getItem('shopCache2');
+    const c = localStorage.getItem('shopCache2:' + week);
     if (!c) {
       document.getElementById('shopList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
       return;
@@ -1544,7 +1564,7 @@ function cancelGen() {
 /* ---------- профиль ---------- */
 function resetCaches() {
   dayCache = {}; shopData = null; cookCache = {};
-  try { localStorage.removeItem('wk1'); } catch (e) {}
+  try { localStorage.removeItem('wk1'); for (let i = 0; i <= MAX_WEEK; i++) localStorage.removeItem('shopCache2:' + i); } catch (e) {}
 }
 function ask(msg, cb) {
   if (tg && tg.showConfirm) tg.showConfirm(msg, ok => ok && cb());

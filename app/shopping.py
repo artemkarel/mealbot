@@ -9,12 +9,11 @@ def build(plan_id: int, day_from=0, day_to=6, persons=1, split_after=2, items=No
     con = connect()
     if items is None:
         rows = [dict(x) for x in con.execute(
-            "SELECT day_index, name, COALESCE(qty_max,qty_min) q, unit, url FROM plan_items"
+            "SELECT day_index, name, COALESCE(qty_max,qty_min) q, unit FROM plan_items"
             " WHERE plan_id=? AND day_index BETWEEN ? AND ?",
             (plan_id, day_from, day_to))]
     else:
         rows = [{"day_index": i["day_index"], "name": i["name"], "unit": i["unit"],
-                 "url": i["url"] if "url" in i.keys() else None,
                  "q": i["qty_max"] if i["qty_max"] is not None else i["qty_min"]}
                 for i in items if day_from <= i["day_index"] <= day_to]
     agg = {}
