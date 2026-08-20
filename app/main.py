@@ -14,7 +14,7 @@ from app.macros import day_macros
 from app.shopping import build as build_shopping
 from app import ai
 from app import auth
-from app.links import urls_by_product, save_links
+from app.links import urls_by_product, save_links, loose_links
 
 init()
 app = FastAPI(title="Meal plan")
@@ -174,6 +174,7 @@ def shopping(x_init_data: str = Header(None)):
     for part in (res["part1"], res["part2"]):
         for it in part:
             it["place"] = places.get(it["id"]) or plan_urls.get(it["id"]) or it["url"]
+    res["links"] = loose_links(con, plan["id"])    # ссылки диетолога без товара в справочнике
     return res
 
 @app.post("/api/place")

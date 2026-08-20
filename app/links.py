@@ -39,6 +39,13 @@ def save_links(con, plan_id, links):
     return saved
 
 
+def loose_links(con, plan_id):
+    """Ссылки, для которых товар в справочнике не нашёлся."""
+    return [{"name": r["name"], "url": r["url"]} for r in con.execute(
+        "SELECT name, url FROM plan_links WHERE plan_id=? AND product IS NULL"
+        " AND name IS NOT NULL", (plan_id,))]
+
+
 def urls_by_product(con, plan_id):
     """{product_id: url} — то, что нужно закупкам."""
     out = {}

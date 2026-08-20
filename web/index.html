@@ -1317,7 +1317,12 @@ async function renderShop() {
         <span class="amt num">${q}</span></div>`;
     }).join('');
   }).join('') || '<div class="empty">Список пуст</div>';
+  const extra = (s.links || []).map(l => `<div class="chk" style="cursor:default">
+      <span class="lbl">${esc(l.name)}
+        <span class="meta">🛒 <a class="link" href="${esc(l.url)}" target="_blank">${esc(placeLabel(l.url))}</a></span></span>
+    </div>`).join('');
   document.getElementById('shopFoot').innerHTML =
+    (extra ? `<div class="sect">Ссылки из плана</div><div class="card">${extra}</div>` : '') +
     `<div style="text-align:center;color:var(--ink3);font-size:12.5px;padding:6px 0 2px">
       ${bought ? `куплено ${bought} из ${total}` : `${total} позиций`}${P > 1 ? ` · на ${P} чел.` : ''}</div>`;
 }
