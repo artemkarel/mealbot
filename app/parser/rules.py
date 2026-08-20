@@ -13,7 +13,7 @@ from pathlib import Path
 
 DAYS = ["Понедельник", "Вторник", "Среда", "Четверг",
         "Пятница", "Суббота", "Воскресенье"]
-MEALS = ["Завтрак", "Обед", "Полдник", "Ужин", "Второй ужин"]
+MEALS = ["Завтрак", "Второй завтрак", "Обед", "Полдник", "Ужин", "Второй ужин"]
 
 # "Отварная гречка – 180 гр."   "Хлебцы ... – 2 шт."   "Кофе – 200 – 250 мл."
 DISH = re.compile(
@@ -122,8 +122,14 @@ def parse(lines: list[str]) -> dict:
                     {"name": body.rstrip("."), "qty": None, "unit": None})
             continue
 
-        for u in URL.findall(raw):
-            meal["links"].append(u)
+        prev_end = 0
+        for mt in URL.finditer(raw):               # в строке бывает несколько ссылок
+            label = raw[prev_end:mt.start()].lstrip("*").strip(" .-–—:")
+            label = re.sub(r"\s*\(.*?\)\s*$", "", label).strip()
+            if len(label) > 80:                    # это уже предложение, а не название товара
+                label = label.rsplit(".", 1)[-1].strip()[:80]
+            meal["links"].append({"text": label, "url": mt.group(0).rstrip(").,;")})
+            prev_end = mt.end()
         body = URL.sub("", raw).strip(" .-–—")
         if not body:
             continue

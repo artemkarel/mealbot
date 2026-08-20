@@ -274,6 +274,7 @@ body.tg{padding:0;background:var(--bg);
     <div id="macroCard"></div>
     <div class="sect">Приёмы пищи</div>
     <div id="meals"><div class="empty">Загрузка…</div></div>
+    <div id="addMeal"></div>
     <div class="sect">Готовка</div>
     <div id="cookHint"></div>
   </div>
@@ -429,7 +430,7 @@ body.tg{padding:0;background:var(--bg);
           <option value="evening">Подготовка на завтра (вечер)</option>
         </select>
         <select id="remMeal">
-          <option>Завтрак</option><option>Обед</option><option>Полдник</option>
+          <option>Завтрак</option><option>Второй завтрак</option><option>Обед</option><option>Полдник</option>
           <option>Ужин</option><option>Второй ужин</option>
         </select>
         <div class="row2">
@@ -454,7 +455,7 @@ body.tg{padding:0;background:var(--bg);
         <input id="supDose" placeholder="Дозировка — например, 1000 мг">
         <div class="row2">
           <select id="supMeal">
-            <option>Завтрак</option><option>Обед</option><option>Полдник</option>
+            <option>Завтрак</option><option>Второй завтрак</option><option>Обед</option><option>Полдник</option>
             <option>Ужин</option><option>Второй ужин</option>
           </select>
           <select id="supTiming">
@@ -716,7 +717,7 @@ function loadWeekInto(w) {                 // один запрос на все 
     r.days.forEach((dd, i) => dayCache[w + ':' + i] = dd);
     P = r.days[0].persons;
     if (r.days[0].plan) planTitle = r.days[0].plan.replace(/\.(docx|txt)$/i, '');
-    if (w === 0) { try { localStorage.setItem('wk0', JSON.stringify(r.days)); } catch (e) {} }
+    if (w === 0) { try { localStorage.setItem('wk1', JSON.stringify(r.days)); } catch (e) {} }
     return r.days;
   }).finally(() => { delete weekInflight[w]; });
   weekInflight[w] = pr;
@@ -921,6 +922,9 @@ async function renderToday() {
     </div>`;
   }).join('') || '<div class="empty">На этот день в плане ничего нет</div>';
 
+  document.getElementById('addMeal').innerHTML = t.plan
+    ? `<div class="card"><button class="btn gh add-toggle" onclick="openAddMeal()">+ Добавить приём</button></div>`
+    : '';
   const dn = t.day_name || DS[day];
   document.getElementById('cookHint').innerHTML = t.same_as.length
     ? `<div class="card" style="padding:13px 14px">
@@ -993,7 +997,7 @@ async function planPayload(f) {
   return {filename: f.name, data_b64: await fileToB64(f)};
 }
 /* ---------- «не хочу это» — замена приёма ---------- */
-let swapMeal = null, swapVars = [], swapSel = null, swapWasSwapped = false;
+let swapMeal = null, swapVars = [], swapSel = null, swapWasSwapped = false, swapInPlan = true;
 function showSheet(html) {
   const wrap = document.getElementById('sheetWrap');
   document.getElementById('sheetBody').innerHTML = html;
@@ -1005,6 +1009,25 @@ function closeSheet() {
   document.getElementById('sheetWrap').classList.remove('on');
   document.body.style.overflow = '';
 }
+async function openAddMeal() {
+  showSheet('<div class="empty">Смотрю, что можно добавить…</div>');
+  let r;
+  try { r = await api(`/api/meals/addable?day=${day}&week=${week}`); }
+  catch (e) {
+    return showSheet(`<div class="empty">${esc(e.message)}</div>
+      <div class="note-acts"><button class="btn" onclick="closeSheet()">Закрыть</button></div>`);
+  }
+  const rows = (r.meals || []).map(m =>
+    `<div class="chk" style="align-items:center" onclick="openSwap('${esc(m)}')">
+      <span class="lbl">${esc(m)}</span>
+      <span style="color:var(--ink3);font-size:18px;line-height:1">›</span></div>`).join('');
+  showSheet(`<div style="font-weight:600;font-size:16px">Добавить приём</div>
+    <div style="font-size:12.5px;color:var(--ink2);margin:3px 0 12px">Возьмём готовый приём
+      из твоих планов — вместе с составом и граммовками.</div>
+    ${rows ? `<div class="card">${rows}</div>`
+           : '<div class="empty">Все приёмы этого дня уже на месте</div>'}
+    <div class="note-acts"><button class="btn" onclick="closeSheet()">Отмена</button></div>`);
+}
 async function openSwap(meal) {
   swapMeal = meal; swapSel = null;
   showSheet('<div class="empty">Подбираю варианты…</div>');
@@ -1014,7 +1037,7 @@ async function openSwap(meal) {
     return showSheet(`<div class="empty">${esc(e.message)}</div>
       <div class="note-acts"><button class="btn" onclick="closeSheet()">Закрыть</button></div>`);
   }
-  swapVars = r.variants; swapWasSwapped = r.swapped;
+  swapVars = r.variants; swapWasSwapped = r.swapped; swapInPlan = r.in_plan !== false;
   renderSwapSheet();
 }
 function renderSwapSheet() {
@@ -1028,15 +1051,16 @@ function renderSwapSheet() {
           `<div class="row"><span class="n">${esc(it.name)}</span>
            <span class="q num">${amt(it.qty_min, it.qty_max, it.unit)}</span></div>`).join('')}</div>
       </div></div>`).join('');
-  showSheet(`<div style="font-weight:600;font-size:16px">Заменить «${esc(swapMeal)}»?</div>
+  const add = !swapInPlan;
+  showSheet(`<div style="font-weight:600;font-size:16px">${add ? 'Добавить' : 'Заменить'} «${esc(swapMeal)}»${add ? '' : '?'}</div>
     <div style="font-size:12.5px;color:var(--ink2);margin:3px 0 12px">Готовые приёмы из твоих
-      планов — отметь подходящий и нажми «Заменить».</div>
+      планов — отметь подходящий и нажми «${add ? 'Добавить' : 'Заменить'}».</div>
     ${cards || '<div class="empty">Других вариантов этого приёма в планах нет</div>'}
     <div class="note-acts" style="margin-top:10px">
       ${swapVars.length ? `<button class="btn pri" ${swapSel == null ? 'disabled' : ''}
-          onclick="applySwap()">Заменить</button>
+          onclick="applySwap()">${add ? 'Добавить' : 'Заменить'}</button>
         <button class="btn" onclick="openSwap(swapMeal)">🎲 Ещё</button>` : ''}
-      ${swapWasSwapped ? `<button class="btn" onclick="revertSwap()">↩ Вернуть из плана</button>` : ''}
+      ${swapWasSwapped ? `<button class="btn" onclick="revertSwap()">${add ? '🗑 Убрать приём' : '↩ Вернуть из плана'}</button>` : ''}
       <button class="btn" onclick="closeSheet()">Отмена</button></div>`);
   if (sh) sh.scrollTop = st0;
 }
@@ -1048,13 +1072,14 @@ async function applySwap() {
       body: JSON.stringify({day, week, meal: swapMeal, items: swapVars[swapSel].items})});
   } catch (e) { return toast(e.message); }
   closeSheet(); resetCaches(); renderToday();
-  toast('Приём заменён — закупки и готовка пересчитаны');
+  toast(swapInPlan ? 'Приём заменён — закупки и готовка пересчитаны'
+                   : 'Приём добавлен — закупки и готовка пересчитаны');
 }
 async function revertSwap() {
   try { await api(`/api/swap/revert?day=${day}&meal=${encodeURIComponent(swapMeal)}&week=${week}`, {method: 'POST'}); }
   catch (e) { return toast(e.message); }
   closeSheet(); resetCaches(); renderToday();
-  toast('Вернул как в плане');
+  toast(swapInPlan ? 'Вернул как в плане' : 'Приём убран');
 }
 
 async function chooseWeekPlan(id) {
@@ -1165,7 +1190,7 @@ function renderMode() {
 }
 
 /* ---------- неделя ---------- */
-const MEAL_ORDER = ['Завтрак', 'Обед', 'Полдник', 'Ужин', 'Второй ужин'];
+const MEAL_ORDER = ['Завтрак', 'Второй завтрак', 'Обед', 'Полдник', 'Ужин', 'Второй ужин'];
 async function renderWeek() {
   let days;
   try { days = await Promise.all(DS.map((_, i) => loadDay(i))); } catch (e) {
@@ -1234,9 +1259,9 @@ async function renderShop() {
   try {
     s = shopData || (shopData = await api('/api/shopping'));
     // кэш для магазина без связи: галочки и так живут в телефоне
-    try { localStorage.setItem('shopCache', JSON.stringify(s)); } catch (e) {}
+    try { localStorage.setItem('shopCache2', JSON.stringify(s)); } catch (e) {}
   } catch (e) {
-    const c = localStorage.getItem('shopCache');
+    const c = localStorage.getItem('shopCache2');
     if (!c) {
       document.getElementById('shopList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
       return;
@@ -1514,7 +1539,7 @@ function cancelGen() {
 /* ---------- профиль ---------- */
 function resetCaches() {
   dayCache = {}; shopData = null; cookCache = {};
-  try { localStorage.removeItem('wk0'); } catch (e) {}
+  try { localStorage.removeItem('wk1'); } catch (e) {}
 }
 function ask(msg, cb) {
   if (tg && tg.showConfirm) tg.showConfirm(msg, ok => ok && cb());
@@ -1731,7 +1756,7 @@ function mondayISO() {
   moveTabInd(document.querySelector('.tabs button.on'));
   let painted = false;
   try {                                   // экран из прошлого запуска — сразу, без сети
-    const c = JSON.parse(localStorage.getItem('wk0') || 'null');
+    const c = JSON.parse(localStorage.getItem('wk1') || 'null');
     if (Array.isArray(c) && c.length === 7 && c[0].week_start === mondayISO()) {
       c.forEach((dd, i) => dayCache['0:' + i] = dd);
       P = c[0].persons;

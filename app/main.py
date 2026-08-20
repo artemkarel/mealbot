@@ -9,11 +9,12 @@ from app.db import (connect, init, current_plan, persons_of, set_current_plan,
                     set_persons, day_items, touch_user, MAX_UID_OFFSET,
                     plan_for, monday_of, plan_scope, visible_plan, menu_owner)
 from datetime import timedelta
-from app.cooking import cook_plan, same_days
+from app.cooking import cook_plan, same_days, forget_plan
 from app.macros import day_macros
 from app.shopping import build as build_shopping
 from app import ai
 from app import auth
+from app.links import urls_by_product, save_links
 
 init()
 app = FastAPI(title="Meal plan")
@@ -34,7 +35,7 @@ DEV = os.getenv("DEV", "0") == "1"
 ADMINS = {int(x) for x in os.getenv("ADMIN_USER_IDS", "").replace(" ", "").split(",") if x}
 if DEV: ADMINS.add(0)
 
-MEALS = ["Завтрак", "Обед", "Полдник", "Ужин", "Второй ужин"]
+MEALS = ["Завтрак", "Второй завтрак", "Обед", "Полдник", "Ужин", "Второй ужин"]
 TIMINGS = ["до еды", "во время еды", "после еды"]
 KINDS = ["meal", "shopping", "morning", "evening", "menu"]
 
@@ -101,9 +102,11 @@ def _day_payload(con, uid, plan, day, ws, persons, recipes, logs_all, prep_all, 
         m["items"].append({"name": r["name"], "qty_min": r["qty_min"],
                            "qty_max": r["qty_max"], "unit": r["unit"], "url": r["url"],
                            "recipe": recipes.get(r["name"])})
+    order = {m: i for i, m in enumerate(MEALS)}
     return {"plan": plan["title"], "week_start": ws, "persons": persons,
             "day": day, "day_name": items[0]["day_name"] if items else None,
-            "meals": list(meals.values()), "logs": logs_all.get(day, {}),
+            "meals": sorted(meals.values(), key=lambda m: order.get(m["meal"], 99)),
+            "logs": logs_all.get(day, {}),
             "prep": prep_all.get(day, []),
             "macros": day_macros(con, items),
             "same_as": dups.get(day, [])}
@@ -164,12 +167,13 @@ def shopping(x_init_data: str = Header(None)):
     con = connect(); plan = active_plan(con, uid)
     week = [it for d in range(7) for it in day_items(con, uid, plan["id"], d)]
     res = build_shopping(plan["id"], persons=persons_of(con, uid), items=week)
-    # место покупки: правка пользователя поверх ссылки из файла диетолога
+    # где купить: правка пользователя > ссылка из плана > ссылка из справочника
     places = {r["product"]: r["place"] for r in con.execute(
         "SELECT product, place FROM user_places WHERE user_id=?", (uid,))}
+    plan_urls = urls_by_product(con, plan["id"])   # ссылки диетолога из примечаний
     for part in (res["part1"], res["part2"]):
         for it in part:
-            it["place"] = places.get(it["id"]) or it["url"]
+            it["place"] = places.get(it["id"]) or plan_urls.get(it["id"]) or it["url"]
     return res
 
 @app.post("/api/place")
@@ -323,9 +327,10 @@ def plan_delete(id: int, x_init_data: str = Header(None)):
     if r["user_id"] is None and uid not in ADMINS:
         raise HTTPException(403, "общий план может удалить только админ")
     for t in ("plan_items", "recipes", "prep_tasks", "meal_logs", "meal_overrides",
-              "week_plans"):
+              "week_plans", "plan_links"):
         con.execute(f"DELETE FROM {t} WHERE plan_id=?", (id,))
     con.execute("DELETE FROM plans WHERE id=?", (id,))
+    forget_plan(id)
     con.execute("UPDATE user_prefs SET current_plan_id=NULL WHERE current_plan_id=?", (id,))
     con.commit(); return {"ok": True}
 
@@ -387,7 +392,7 @@ def plan_save_generated(payload: dict, x_init_data: str = Header(None)):
     pid = cur.lastrowid
     for di, d in enumerate(days[:7]):
         day_name = str(d.get("day") or DAY_NAMES_FULL[di])[:20]
-        for mi, m in enumerate((d.get("meals") or [])[:6]):
+        for mi, m in enumerate((d.get("meals") or [])[:8]):
             meal = str(m.get("meal") or "")[:30]
             if meal not in MEALS: continue
             for it in (m.get("items") or [])[:15]:
@@ -522,9 +527,13 @@ async def plan_import(payload: dict, x_init_data: str = Header(None)):
                       (title, fname or "text", json.dumps(parsed, ensure_ascii=False)[:200000], uid))
     pid = cur.lastrowid
     saved = 0
+    save_links(con, pid, [l for d in days for l in (d.get("links") or [])
+                          + [x for m in (d.get("meals") or [])
+                             for x in (m.get("links") or [])]
+                          if isinstance(l, dict)])
     for di, d in enumerate(days[:7]):
         day_name = str(d.get("day") or DAY_NAMES_FULL[di])[:20]
-        for mi, m in enumerate((d.get("meals") or [])[:6]):
+        for mi, m in enumerate((d.get("meals") or [])[:8]):
             meal = str(m.get("meal") or "")[:30]
             if meal not in MEALS: continue
             note = str(m.get("note") or "").strip()[:300] or None
@@ -545,6 +554,7 @@ async def plan_import(payload: dict, x_init_data: str = Header(None)):
         raise HTTPException(422, "ИИ не нашёл в документе ни одного блюда")
     set_current_plan(con, uid, pid)
     con.commit()
+    forget_plan(pid)
     return {"ok": True, "plan_id": pid, "title": title, "days": min(len(days), 7)}
 
 # ---------- «не хочу это» — замена приёма пищи ----------
@@ -568,6 +578,17 @@ def _meal_pool(con, uid: int, meal: str):
                                   for i in items])
     return pool
 
+@app.get("/api/meals/addable")
+def meals_addable(day: int, week: int = 0, x_init_data: str = Header(None)):
+    """Приёмы, которых в этом дне нет — их можно добавить (например второй завтрак)."""
+    uid = me(x_init_data)["id"]
+    con = connect()
+    plan = week_plan(con, uid, week)
+    if not plan: return {"meals": []}
+    have = {r["meal"] for r in day_items(con, uid, plan["id"], day)}
+    pool = {m: len(_meal_pool(con, uid, m)) for m in MEALS if m not in have}
+    return {"meals": [m for m, n in pool.items() if n]}
+
 @app.get("/api/swap/options")
 def swap_options(day: int, meal: str, week: int = 0, x_init_data: str = Header(None)):
     uid = me(x_init_data)["id"]
@@ -582,7 +603,10 @@ def swap_options(day: int, meal: str, week: int = 0, x_init_data: str = Header(N
     swapped = bool(con.execute(
         "SELECT 1 FROM meal_overrides WHERE user_id=? AND plan_id=? AND day_index=? AND meal=?",
         (uid, plan["id"], day, meal)).fetchone())
-    return {"variants": variants[:3], "swapped": swapped}
+    in_plan = bool(con.execute(
+        "SELECT 1 FROM plan_items WHERE plan_id=? AND day_index=? AND meal=?",
+        (plan["id"], day, meal)).fetchone())
+    return {"variants": variants[:3], "swapped": swapped, "in_plan": in_plan}
 
 @app.post("/api/swap")
 def swap_apply(payload: dict, x_init_data: str = Header(None)):

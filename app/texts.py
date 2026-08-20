@@ -42,7 +42,7 @@ def build_morning(uid: int) -> str:
     if plan:
         day = date.today().weekday()
         rows = [r for r in day_items(con, uid, plan["id"], day)
-                if r["meal"] in ("Обед", "Полдник")]
+                if r["meal"] in ("Второй завтрак", "Обед", "Полдник")]
         if rows:
             lines, cur = [], None
             for r in rows:

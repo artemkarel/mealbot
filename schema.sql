@@ -26,6 +26,11 @@ CREATE TABLE IF NOT EXISTS recipes (
   id INTEGER PRIMARY KEY, plan_id INT, dish TEXT, title TEXT,
   ingredients_json TEXT, steps_json TEXT);
 
+CREATE TABLE IF NOT EXISTS plan_links (           -- ссылки на товары из примечаний плана
+  id INTEGER PRIMARY KEY, plan_id INT, name TEXT, url TEXT,
+  product TEXT);                                  -- товар справочника, к которому относится ссылка
+CREATE INDEX IF NOT EXISTS idx_plan_links ON plan_links(plan_id);
+
 CREATE TABLE IF NOT EXISTS prep_tasks (
   id INTEGER PRIMARY KEY, plan_id INT, day_index INT, meal TEXT, text TEXT, done INT DEFAULT 0);
 

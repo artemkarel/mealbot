@@ -45,6 +45,12 @@ def _migrate(con):
     for c in ("kcal", "prot", "fat", "carb", "unit_g"):
         if cols and c not in cols:
             con.execute(f"ALTER TABLE products ADD COLUMN {c} REAL")
+    cols = [r[1] for r in con.execute("PRAGMA table_info(plan_links)")]
+    if cols and "product" not in cols:
+        con.execute("ALTER TABLE plan_links ADD COLUMN product TEXT")
+    # старый импорт вешал первую ссылку приёма на все его позиции — такие url врут
+    con.execute("UPDATE plan_items SET url=NULL WHERE url IS NOT NULL AND plan_id NOT IN"
+                " (SELECT DISTINCT plan_id FROM plan_links)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_plans_user ON plans(user_id, active)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_purchases_user ON purchases(user_id, used)")
     con.execute("CREATE INDEX IF NOT EXISTS idx_recipes_plan ON recipes(plan_id)")
@@ -154,6 +160,17 @@ def day_items(con, uid: int, plan_id: int, day: int):
                 out.append({**r, "name": it.get("name"), "qty_min": it.get("qty_min"),
                             "qty_max": it.get("qty_max"), "unit": it.get("unit"),
                             "note": None, "url": None, "swapped": 1})
+    # приём, которого в плане нет, а пользователь его добавил (например второй завтрак)
+    base = dict(rows[0]) if rows else {}
+    for m, items in ovs.items():
+        if m in done:
+            continue
+        for it in items:
+            out.append({**base, "plan_id": plan_id, "day_index": day,
+                        "day_name": base.get("day_name"), "meal": m, "meal_index": 99,
+                        "optional": 0, "note": None, "url": None, "swapped": 1,
+                        "name": it.get("name"), "qty_min": it.get("qty_min"),
+                        "qty_max": it.get("qty_max"), "unit": it.get("unit")})
     return out
 
 

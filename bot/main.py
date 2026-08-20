@@ -234,6 +234,8 @@ async def fire_reminder(r):
                 "menu": lambda: build_menu(uid),
                 "meal": lambda: build_meal(uid, r["meal"])}
     text = builders.get(r["kind"], lambda: "")() or REMINDER_FALLBACK.get(r["kind"], "")
+    if not text and r["kind"] == "meal":
+        text = f"🍽 {r['meal']}: по плану на сегодня ничего нет."
     if text:
         await tidy_chat(uid)         # чат «в одном окне»: убираем прошлые сообщения
         sent = await bot.send_message(uid, text, reply_markup=kb)

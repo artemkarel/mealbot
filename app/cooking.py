@@ -56,6 +56,11 @@ def cook_plan(plan_id: int, day_index: int, days: int = 1, persons: int = 1, ite
 
 _same_cache = {}
 
+
+def forget_plan(plan_id: int):
+    """План переимпортировали или удалили — пересчитать одинаковые дни заново."""
+    _same_cache.pop(plan_id, None)
+
 def same_days(plan_id: int):
     """Пары одинаковых дней -> {day_index: [индексы дублей]}"""
     if plan_id in _same_cache:

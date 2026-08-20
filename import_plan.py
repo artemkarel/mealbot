@@ -2,6 +2,8 @@
 import sys, json
 from app.parser.rules import parse_file
 from app.db import init
+from app.match import best
+from app.links import save_links
 
 def save(path, user_id=0):
     res = parse_file(path)
@@ -11,15 +13,21 @@ def save(path, user_id=0):
         "INSERT INTO plans(title,source_file,raw_json,user_id) VALUES(?,?,?,?)",
         (path.split("/")[-1], path, json.dumps(res, ensure_ascii=False), user_id))
     pid = cur.lastrowid
+    all_links = [l for d in res["days"] for m in d["meals"]
+                 for l in m["links"] if isinstance(l, dict)]
+    save_links(con, pid, all_links)          # ссылки на товары -> в закупки
     for di, d in enumerate(res["days"]):
         for mi, m in enumerate(d["meals"]):
+            links = [l for l in m["links"] if isinstance(l, dict)]
             for it in m["items"]:
+                # ссылку кладём к той позиции, о которой она написана
+                l = best(it["name"], links, key=lambda x: x["text"] or "")
                 con.execute(
                     "INSERT INTO plan_items(plan_id,day_index,day_name,meal,meal_index,"
                     "optional,name,qty_min,qty_max,unit,note,url) VALUES(?,?,?,?,?,?,?,?,?,?,?,?)",
                     (pid, di, d["day"], m["meal"], mi, int(m["optional"]), it["name"],
                      it["qty_min"], it["qty_max"], it["unit"],
-                     " ".join(m["notes"])[:500] or None, (m["links"] or [None])[0]))
+                     " ".join(m["notes"])[:500] or None, l["url"] if l else None))
             if m["recipe"]:
                 con.execute("INSERT INTO recipes(plan_id,dish,title,ingredients_json,steps_json)"
                             " VALUES(?,?,?,?,?)",
