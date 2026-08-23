@@ -20,9 +20,10 @@ except ImportError:            # запуск модуля напрямую
     OPTIONAL = {"Второй ужин"}
 
 # "Отварная гречка – 180 гр."   "Хлебцы ... – 2 шт."   "Кофе – 200 – 250 мл."
+# В диапазоне после первого числа бывает точка: "Горячая вода – 200. – 250 мл."
 DISH = re.compile(
     r"^(?P<name>.+?)\s*[–—-]\s*"
-    r"(?P<qty>\d+\s*(?:[–—-]\s*\d+)?|½|¼)\s*"
+    r"(?P<qty>\d+\s*\.?\s*(?:[–—-]\s*\d+)?|½|¼)\s*"
     r"(?P<unit>ч/л\.?|ст/л\.?|гр\.?|г\.|мл\.?|шт\.?|пачки|л\.?)"
     r"\s*(?P<tail>\(.*?\))?\s*;?\s*$"
 )
@@ -151,8 +152,17 @@ def parse(lines: list[str]) -> dict:
         is_note = raw.lstrip().startswith("*")
         m = DISH.match(body)
 
+        # ингредиент рецепта без маркера-дефиса: "Киви – 70 гр." внутри блока рецепта
+        if in_recipe and m and not is_note and meal["recipe"] is not None:
+            meal["recipe"]["ingredients"].append({
+                "name": m.group("name").strip(),
+                "qty": m.group("qty").replace(" ", "").replace(".", ""),
+                "unit": UNIT_MAP.get(m.group("unit"), m.group("unit")),
+            })
+            continue
+
         if m and not is_note and not in_recipe:
-            q = m.group("qty").replace(" ", "")
+            q = m.group("qty").replace(" ", "").replace(".", "")
             rng = re.match(r"(\d+)[–—-](\d+)", q)
             lo, hi = (int(rng.group(1)), int(rng.group(2))) if rng else (
                 (int(q), int(q)) if q.isdigit() else (None, None))
