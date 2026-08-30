@@ -98,6 +98,10 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .btn:active{background:#F5F7F4}
 .btn.pri{background:var(--accent);border-color:var(--accent);color:#fff;font-weight:500}
 .btn.gh{border-style:dashed;color:var(--ink2)}
+/* кнопки «+ Добавить …» — воздушные пилюли по контуру, без карточки на всю ширину */
+.add-wrap{margin-bottom:12px}
+.btn.add-toggle{background:none;border:1.5px dashed #CBD4CC;border-radius:999px;padding:8px 16px}
+.btn.add-toggle:active{background:rgba(255,255,255,.65)}
 .card.eaten{opacity:.55}
 .card.eaten .btn.pri{background:#E7F0EA;color:var(--accent);border-color:#CADCD0}
 
@@ -326,7 +330,7 @@ body.tg{padding:0;background:var(--bg);
   <!-- ===== РЕЦЕПТЫ ===== -->
   <div class="scr" id="s-recipes">
     <div class="card" id="recList"><div class="empty">Загрузка…</div></div>
-    <div class="card"><button class="btn gh add-toggle" id="rcAddBtn"
+    <div class="add-wrap"><button class="btn gh add-toggle" id="rcAddBtn"
       onclick="toggleAdd('rcFormWrap','rcAddBtn','+ Добавить рецепт')">+ Добавить рецепт</button></div>
     <div id="rcFormWrap" style="display:none">
       <div class="card"><div class="frm">
@@ -385,12 +389,12 @@ body.tg{padding:0;background:var(--bg);
   <!-- ===== ПЛАНЫ (подэкран) ===== -->
   <div class="scr" id="s-plans">
     <div class="card" id="myPlans"><div class="empty">Загрузка…</div></div>
-    <div class="card"><button class="btn gh add-toggle" id="genBtn" onclick="genMenu()">🎲 Сгенерировать меню на неделю</button></div>
+    <div class="add-wrap"><button class="btn gh add-toggle" id="genBtn" onclick="genMenu()">🎲 Сгенерировать меню на неделю</button></div>
     <div id="genPreview" style="display:none"></div>
 
     <div class="sect">Общее меню</div>
     <div class="card" id="shareList"><div class="empty">Загрузка…</div></div>
-    <div class="card"><button class="btn gh add-toggle" id="shAddBtn"
+    <div class="add-wrap"><button class="btn gh add-toggle" id="shAddBtn"
       onclick="toggleAdd('shFormWrap','shAddBtn','+ Поделиться меню')">+ Поделиться меню</button></div>
     <div id="shFormWrap" style="display:none">
       <div class="card"><div class="frm">
@@ -403,7 +407,7 @@ body.tg{padding:0;background:var(--bg);
     </div>
 
     <div class="sect">Добавить план</div>
-    <div class="card"><button class="btn gh add-toggle" id="impBtn"
+    <div class="add-wrap"><button class="btn gh add-toggle" id="impBtn"
       onclick="toggleAdd('impFormWrap','impBtn','➕ Добавить план — файл или текст')">➕ Добавить план — файл или текст</button></div>
     <div id="impFormWrap" style="display:none">
       <div class="card"><div class="frm">
@@ -420,7 +424,7 @@ body.tg{padding:0;background:var(--bg);
   <!-- ===== НАПОМИНАНИЯ (подэкран) ===== -->
   <div class="scr" id="s-rem">
     <div class="card" id="remList"><div class="empty">Загрузка…</div></div>
-    <div class="card"><button class="btn gh add-toggle" id="remAddBtn"
+    <div class="add-wrap"><button class="btn gh add-toggle" id="remAddBtn"
       onclick="toggleAdd('remFormWrap','remAddBtn','+ Добавить напоминание')">+ Добавить напоминание</button></div>
     <div id="remFormWrap" style="display:none">
       <div class="card"><div class="frm">
@@ -449,7 +453,7 @@ body.tg{padding:0;background:var(--bg);
   <!-- ===== БАДЫ (подэкран) ===== -->
   <div class="scr" id="s-sup">
     <div class="card" id="supList"><div class="empty">Загрузка…</div></div>
-    <div class="card"><button class="btn gh add-toggle" id="supAddBtn"
+    <div class="add-wrap"><button class="btn gh add-toggle" id="supAddBtn"
       onclick="toggleAdd('supFormWrap','supAddBtn','+ Добавить БАД')">+ Добавить БАД</button></div>
     <div id="supFormWrap" style="display:none">
       <div class="card"><div class="frm">
@@ -943,7 +947,7 @@ async function renderToday() {
   }
 
   document.getElementById('addMeal').innerHTML = t.plan
-    ? `<div class="card"><button class="btn gh add-toggle" onclick="openAddMeal()">+ Добавить приём</button></div>`
+    ? `<div class="add-wrap"><button class="btn gh add-toggle" onclick="openAddMeal()">+ Добавить приём</button></div>`
     : '';
   const dn = t.day_name || DS[day];
   document.getElementById('cookHint').innerHTML = t.same_as.length
