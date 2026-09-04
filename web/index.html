@@ -313,11 +313,7 @@ body.tg{padding:0;background:var(--bg);
 
   <!-- ===== ЗАКУПКИ ===== -->
   <div class="scr" id="s-shop">
-    <div class="seg" id="shopSeg">
-      <button class="on" onclick="setShop(0,this)">Закупка 1</button>
-      <button onclick="setShop(1,this)">Закупка 2</button>
-    </div>
-    <div class="seg" id="grpSeg" style="margin-top:-6px">
+    <div class="seg" id="grpSeg">
       <button class="on" onclick="setGrp('cat',this)">По категориям</button>
       <button onclick="setGrp('place',this)">По магазинам</button>
     </div>
@@ -544,7 +540,7 @@ let cookCache = {};                          // "day:days" -> ответ /api/co
 let curRecipe = null;                        // рецепт для экрана готовки
 let supData = null;                          // БАДы пользователя (null = не загружены)
 let nav = {tab: 'today', stack: []};
-let st = {shop: 0, cookDays: 1, editPlace: null, editRec: null,
+let st = {cookDays: 1, editPlace: null, editRec: null,
           shopGroup: localStorage.getItem('shopGroup') || 'cat',
           checked: new Set(JSON.parse(localStorage.getItem('shopChecked') || '[]'))};
 
@@ -585,7 +581,7 @@ function titles() {
     today: [dn, planTitle],
     week:  ['План на неделю', planTitle],
     recipes: ['Рецепты', 'Свои рецепты для блюд плана'],
-    shop:  ['Закупки', 'Две части, чтобы ничего не испортилось'],
+    shop:  ['Закупки', 'Один список на всю неделю'],
     me:    ['Профиль', 'Порции и напоминания']
   };
 }
@@ -1257,15 +1253,6 @@ async function renderWeek() {
 }
 
 /* ---------- закупки ---------- */
-const SHOPHEAD = [
-  ['green', '📅', '<b>Закупка 1 — начало недели</b><br>Скоропорт на первые дни. Всё долгое хранение берём сразу на неделю.'],
-  ['amber', '❄️', '<b>Закупка 2 — середина недели</b><br>Скоропорт на вторую половину. Что помечено «заморозить сразу» — уже куплено в первой закупке.']
-];
-function setShop(i, btn) {
-  st.shop = i; st.editPlace = null;
-  [...document.querySelectorAll('#shopSeg button')].forEach(b => b.classList.remove('on'));
-  btn.classList.add('on'); renderShop();
-}
 function setGrp(g, btn) {
   st.shopGroup = g; localStorage.setItem('shopGroup', g);
   [...document.querySelectorAll('#grpSeg button')].forEach(b => b.classList.remove('on'));
@@ -1276,8 +1263,7 @@ function placeLabel(p) {
 }
 const NO_PLACE = 'Без места покупки';
 async function renderShop() {
-  const [cls, ic, txt] = SHOPHEAD[st.shop];
-  document.getElementById('shopHead').innerHTML = `<div class="note ${cls}"><span class="ic">${ic}</span><div>${txt}</div></div>`;
+  document.getElementById('shopHead').innerHTML = '';
   document.getElementById('persShop').innerHTML = persBar('Умножает все количества в списке');
   [...document.querySelectorAll('#grpSeg button')].forEach((b, i) =>
     b.classList.toggle('on', (i === 0) === (st.shopGroup === 'cat')));
@@ -1285,19 +1271,19 @@ async function renderShop() {
   try {
     s = shopData || (shopData = await api('/api/shopping?week=' + week));
     // кэш для магазина без связи: галочки и так живут в телефоне
-    try { localStorage.setItem('shopCache2:' + week, JSON.stringify(s)); } catch (e) {}
+    try { localStorage.setItem('shopCache3:' + week, JSON.stringify(s)); } catch (e) {}
   } catch (e) {
-    const c = localStorage.getItem('shopCache2:' + week);
+    const c = localStorage.getItem('shopCache3:' + week);
     if (!c) {
       document.getElementById('shopList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
       return;
     }
     s = JSON.parse(c);
-    document.getElementById('shopHead').innerHTML +=
+    document.getElementById('shopHead').innerHTML =
       `<div class="note amber"><span class="ic">📶</span><div><b>Нет связи</b> —
         показываю сохранённый список. Галочки работают и без сети.</div></div>`;
   }
-  const items = st.shop === 0 ? s.part1 : s.part2;
+  const items = s.items || [];
   const groups = {};
   for (const it of items) {
     const g = st.shopGroup === 'place'
@@ -1312,9 +1298,9 @@ async function renderShop() {
   document.getElementById('shopList').innerHTML = names.map(grp => {
     const arr = groups[grp];
     total += arr.length;
-    bought += arr.filter(it => st.checked.has(st.shop + ':' + it.id + ':' + it.tag)).length;
+    bought += arr.filter(it => st.checked.has('w:' + it.id)).length;
     return `<div class="grp">${esc(grp)}</div>` + arr.map(it => {
-      const key = st.shop + ':' + it.id + ':' + it.tag;
+      const key = 'w:' + it.id;
       const on = st.checked.has(key);
       const q = `${it.qty.value} ${esc(it.qty.unit)}`;
       const meta = [it.tag, it.qty.packs && it.qty.packs > 1 ? it.qty.packs + ' уп.' : null,
@@ -1570,7 +1556,7 @@ function cancelGen() {
 /* ---------- профиль ---------- */
 function resetCaches() {
   dayCache = {}; shopData = null; cookCache = {};
-  try { localStorage.removeItem('wk1'); for (let i = 0; i <= MAX_WEEK; i++) localStorage.removeItem('shopCache2:' + i); } catch (e) {}
+  try { localStorage.removeItem('wk1'); for (let i = 0; i <= MAX_WEEK; i++) localStorage.removeItem('shopCache3:' + i); } catch (e) {}
 }
 function ask(msg, cb) {
   if (tg && tg.showConfirm) tg.showConfirm(msg, ok => ok && cb());

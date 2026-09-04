@@ -1,10 +1,12 @@
-"""Список закупок: агрегация продуктов, деление по срокам хранения, округление до фасовки."""
+"""Список закупок: агрегация продуктов одним списком на неделю, округление до фасовки.
+Скоропорт, нужный во второй половине недели, получает подсказку вместо отдельной закупки."""
 from app.db import connect
 from app.cooking import _resolve
 from app import ref
 
 def build(plan_id: int, day_from=0, day_to=6, persons=1, split_after=2, items=None):
-    """split_after — последний день первой закупки (0=Пн, 2=Ср).
+    """split_after — последний день «первой половины» недели (0=Пн, 2=Ср): что нужно
+    после него и быстро портится, помечаем «заморозить» / «докупить».
     items — позиции всех дней с учётом замен (иначе берутся из плана как есть)."""
     con = connect()
     if items is None:
@@ -36,21 +38,14 @@ def build(plan_id: int, day_from=0, day_to=6, persons=1, split_after=2, items=No
              else a.__setitem__("late", a["late"] + raw))
             a["days"].append(r["day_index"])
 
-    part1, part2 = [], []
+    out = []
     for a in agg.values():
         total = a["early"] + a["late"]
-        if a["shelf"] >= 14:                       # долгое хранение — берём сразу всё
-            part1.append({**a, "qty": pack(total, a), "tag": "на всю неделю"})
-            continue
-        if a["early"]:
-            part1.append({**a, "qty": pack(a["early"], a), "tag": "на первые дни"})
-        if a["late"]:
-            if a["freezable"] and a["shelf"] <= 3:
-                part1.append({**a, "qty": pack(a["late"], a), "tag": "заморозить сразу"})
-            else:
-                part2.append({**a, "qty": pack(a["late"], a), "tag": "на вторую половину"})
-    key = lambda x: (x["category"] or "", x["name"])
-    return {"part1": sorted(part1, key=key), "part2": sorted(part2, key=key)}
+        tag = None
+        if a["late"] and a["shelf"] <= 3:          # скоропорт на вторую половину недели
+            tag = "часть заморозить" if a["freezable"] else "свежее — докупить к Чт"
+        out.append({**a, "qty": pack(total, a), "tag": tag})
+    return {"items": sorted(out, key=lambda x: (x["category"] or "", x["name"]))}
 
 def pack(qty, p):
     """Округляем до целой упаковки, если она известна."""

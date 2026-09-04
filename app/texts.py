@@ -121,9 +121,8 @@ def build_shopping_note(uid: int) -> str:
     if not plan:
         return ""
     s = build_shopping(plan["id"], persons=persons_of(con, uid))
-    n1, n2 = len(s["part1"]), len(s["part2"])
-    return (f"🧺 Напоминание о закупке.\nВ списке: {n1} позиций в первой части"
-            f" и {n2} во второй — открой вкладку «Закупки».")
+    return (f"🧺 Напоминание о закупке.\nВ списке на неделю: {len(s['items'])} позиций"
+            " — открой вкладку «Закупки».")
 
 
 def _minutes(hhmm: str) -> int:
