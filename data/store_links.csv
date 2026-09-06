@@ -1,0 +1,303 @@
+product;store;url;name;confidence
+abrikosy;lavka;https://lavka.yandex.ru/good/abrikosy-500-gram;Абрикосы 500 г;high
+abrikosy;vkusvill;https://vkusvill.ru/goods/abrikos-628/;Абрикос;high
+avokado;lavka;https://lavka.yandex.ru/good/avokado-hass-2-unit-2;Авокадо Хасс 2 шт.;high
+avokado;lenta;https://lenta.com/product/avokado-ves-638739/;Авокадо, весовой;high
+avokado;magnit;https://magnit.ru/product/1000272975-avokado;Авокадо;high
+avokado;vkusvill;https://vkusvill.ru/goods/avokado-khass-16591/;Авокадо Хасс, шт;high
+banan;lavka;https://lavka.yandex.ru/good/zelyonyj-banan-1-unit;Зелёный банан 1 шт.;medium
+banan;lenta;https://lenta.com/product/banany-ves-11230/;Бананы, весовые;high
+banan;magnit;https://magnit.ru/product/9072651501-banany;Бананы;high
+banan;vkusvill;https://vkusvill.ru/goods/banany-731/;Бананы;high
+baranina;vkusvill;https://vkusvill.ru/goods/koreyka-4-rebra-iz-yagnenka-khalyal-okhl-117273/;Корейка 4 ребра из ягненка Халяль охл., вес;high
+batat;lavka;https://lavka.yandex.ru/good/kartofel-batat-fruktovaya-lavka-300-gram;Батат Pura Vida 400 г;high
+batat;lenta;https://lenta.com/product/batat-ves-59791/;Батат с оранжевой мякотью, весовой;high
+batat;vkusvill;https://vkusvill.ru/goods/batat-egipet-47752/;Батат Египет;high
+bioyogurt_koziy;magnit;https://magnit.ru/product/1000387580-beloe_zoloto_yogurt_iz_kozego_moloka_naturalnyy_mdzh_3_2_tu_rezervuarnyy_sposob_zakvashivaniya_kislo;Йогурт Белое Золото из козьего молока натуральный 150г;high
+bioyogurt_koziy;vkusvill;https://vkusvill.ru/goods/bioyogurt-iz-kozego-moloka-yabloko-karamel-97291/;Биойогурт из козьего молока "яблоко-карамель";high
+brauni;vkusvill;https://vkusvill.ru/goods/brauni-iz-zelenoy-grechki-119077/;Брауни из зеленой гречки, 120 г (веган);high
+brusketa;lenta;https://lenta.com/product/brusketta-iz-vyalenyh-tomatov-s-kedrovymi-oreshkami-rossiya-140g-746049/;Брускетта TOMTOM из вяленых томатов с кедровыми орешками, 140г;medium
+brusketa;magnit;https://magnit.ru/product/1000452142-premiere_of_taste_brusketta_iz_vyal_tomat_s_provan_trav_140g;Брускетта TomTom с вялеными томатами и прованскими травами 140г;medium
+brusketa;vkusvill;https://vkusvill.ru/goods/brusketta-iz-vyalenykh-tomatov-s-keshyu-38367/;Брускетта из вяленых томатов с кешью;high
+bulgur;lavka;https://lavka.yandex.ru/good/bulgur-agro-alyans-iz-tvyordyh-sortov-pshenicy-450-gram;Булгур Агро-Альянс 450 г;high
+bulgur;lenta;https://lenta.com/product/bulgur--1-prodovolstvennyjj-rossiya-450g-354751/;Булгур НАЦИОНАЛЬ, 450г;high
+bulgur;magnit;https://magnit.ru/product/1000252272-krupa_mistral_krupa_pshenichnaya_bulgur_11605_krupa_pshenichnaya_bulgur_500g_polietilenovaya_upakovk;Крупа пшеничная Мистраль Булгур 500г;high
+bulgur;vkusvill;https://vkusvill.ru/goods/krupa-pshenichnaya-mistral-bulgur-500-g-32678/;Крупа пшеничная Мистраль Булгур 500 г;high
+buryy_ris;lenta;https://lenta.com/product/ris-buryjj-vetnam-470g-915490/;Рис TAMASHAE MIADI PREMIUM Бурый, 470г;high
+buryy_ris;magnit;https://magnit.ru/product/1000303403-magnit_ris_buryy_400g_p_up_8;Рис Бурый Premiere of Taste 400г;high
+buryy_ris;vkusvill;https://vkusvill.ru/goods/ris-buryy-neshlifovannyy-28795/;Рис бурый нешлифованный;high
+chipsy;lavka;https://lavka.yandex.ru/good/chipsy-lays-s-solyu-140-gram;Чипсы Lay's С солью 140 г;medium
+chipsy;lenta;https://lenta.com/product/chipsy-kartofelnye-naturalnye-rossiya-140g-611358/;Чипсы картофельные LAY'S Натуральные, 140г;medium
+chipsy;vkusvill;https://vkusvill.ru/goods/chipsy-s-gimalayskoy-solyu-60653/;Чипсы с гималайской солью;high
+cvetnaya_kapusta;lavka;https://lavka.yandex.ru/good/kapusta-cvetnaya-socvetiya-500-gram;Капуста цветная 500 г;high
+cvetnaya_kapusta;lenta;https://lenta.com/product/kapusta-cvetnaya-ves-11749/;Капуста цветная, весовая;high
+cvetnaya_kapusta;magnit;https://magnit.ru/product/1000545538-green_ribbon_tsvet_kapusta_zamorozh_700g;Капуста Green Ribbon цветная быстрозамороженная 700г;medium
+cvetnaya_kapusta;vkusvill;https://vkusvill.ru/goods/kapusta-tsvetnaya-626/;Капуста цветная;high
+dikiy_ris;vkusvill;https://vkusvill.ru/goods/smes-risa-burogo-i-dikogo-paketiki-29383/;Смесь риса бурого и дикого (пакетики);medium
+dynya;lavka;https://lavka.yandex.ru/good/dynya-kolhoznica-12-kilogram;Дыня Колхозница 800 г;high
+dynya;lenta;https://lenta.com/product/dynya-torpeda-ves-182929/;Дыня Торпеда, весовая;high
+dynya;magnit;https://magnit.ru/product/3412140002-dynya_1kg;Дыня;high
+dynya;vkusvill;https://vkusvill.ru/goods/dynya-kolkhoznitsa-665/;Дыня Колхозница;high
+ezhiki_indeyki;vkusvill;https://vkusvill.ru/goods/ezhiki-iz-indeyki-30042/;Ежики из индейки;high
+farsh_govyazhiy;lavka;https://lavka.yandex.ru/good/farsh-govyazhij-iz-lavki-ohlazhdennyj-400-gram;Фарш говяжий Из Лавки 400 г;high
+farsh_govyazhiy;lenta;https://lenta.com/product/farsh-govyazhijj-halyal-ohl-rossiya-400g-559276/;Фарш говяжий МЯСНАЯ СЛОБОДА Халяль, 400г;medium
+farsh_govyazhiy;magnit;https://magnit.ru/product/1000289907-farsh_eatmeat_govyazhiy_400g;Фарш М Свежесть говяжий 400г;medium
+farsh_govyazhiy;vkusvill;https://vkusvill.ru/goods/farsh-iz-govyadiny-postnyy-po-standartu-vv-62798/;Фарш из говядины «Постный по стандарту ВВ», 360 г;high
+file_lososya;lenta;https://lenta.com/product/losos-atlanticheskijj-file-razmorozhennoe-rossiya-299993/;Лосось Атлантический филе (из замороженного сырья) ЛЕНТА FRESH, весовой;high
+file_lososya;magnit;https://magnit.ru/product/1000128708-pf_iz_ryby_file_lososya_s_kozhey_izgot_iz_morozh_syrya_sp_gm;Филе лосося с кожей;medium
+file_lososya;vkusvill;https://vkusvill.ru/goods/semga-file-okhl-113809/;Семга филе охл., вес АО Вкусвилл;high
+finiki;lavka;https://lavka.yandex.ru/good/finiki-medzhul-iz-lavki-200-gram-2;Финики Меджул Из Лавки 200 г;high
+finiki;lenta;https://lenta.com/product/finiki-korolevskie-ves-471479/;Финики Королевские, весовые;medium
+finiki;vkusvill;https://vkusvill.ru/goods/finiki-sort-medzhul-22403/;Финики сорт "Меджул";high
+funchoza;lavka;https://lavka.yandex.ru/good/vermishel-funchoza-sen-soy-iz-zelyonyh-bobov-200-gram;Фунчоза из зелёных бобов Sen Soy 200 г;high
+funchoza;lenta;https://lenta.com/product/vermishel-funchoza-iz-zelenyh-bobov-korotkaya-kitajj-200g-747965/;Вермишель из зеленых бобов SANBONSAI Фунчоза, короткая, 200г;high
+funchoza;magnit;https://magnit.ru/product/8000120871-takemura_vermishel_funchoza_100g_fl_p;Вермишель Фунчоза Takemura 100г;high
+funchoza;vkusvill;https://vkusvill.ru/goods/vermishel-funchoza-27490/;Вермишель «Фунчоза»;high
+golubika;lavka;https://lavka.yandex.ru/good/golubika-250-gram;Голубика 250 г;high
+golubika;lenta;https://lenta.com/product/golubika-svezhaya-125g-168863/;Голубика свежая, 125г;high
+golubika;vkusvill;https://vkusvill.ru/goods/golubika-20082/;Голубика, 125 г;high
+govyadina;lavka;https://lavka.yandex.ru/good/govyadina-myakot-bedra-bez-kosti-black-angus-miratorg-600-gram;Говядина мякоть бедра Black Angus без кости 600 г;high
+govyadina;lenta;https://lenta.com/product/govyadina-lopatka-beskostnaya-polufabrikat-ohlazhdennyjj-rossiya-42880/;Лопатка говяжья бескостная ЛЕНТА FRESH;medium
+govyadina;vkusvill;https://vkusvill.ru/goods/govyadina-dlya-tusheniya-68672/;Говядина для тушения, 400 г;high
+granatovyy_sok;lenta;https://lenta.com/product/sok-granatovyjj-pryamojj-otzhim-st-rossiya-1l-177471/;Сок ЛЕНТА Гранатовый прямого отжима, 1л;high
+granatovyy_sok;magnit;https://magnit.ru/product/3274230002-sok_nar_granatovyy_1l;Сок Nar Гранатовый 1л;high
+granatovyy_sok;vkusvill;https://vkusvill.ru/goods/sok-granatovyy-pryamogo-otzhima-1063/;Сок гранатовый прямого отжима, 1 л;high
+grebeshki;lavka;https://lavka.yandex.ru/good/morskoj-grebeshok-file-buhta-izobiliya-svezhemorozhennyj-250-gram;Морской гребешок филе Бухта Изобилия 250 г;high
+grebeshki;lenta;https://lenta.com/product/morskojj-grebeshok-sm-rossiya-250g-892324/;Морской гребешок свежемороженый БУХТА ИЗОБИЛИЯ, 250г;high
+grebeshki;magnit;https://magnit.ru/product/1000569730-bukhta_izobiliya_file_grebeshka_s_m_250g_p_up;Филе гребешка Бухта изобилия свежемороженое 250г;high
+grebeshki;vkusvill;https://vkusvill.ru/goods/morskoy-grebeshok-file-100-130-zam-19426/;Морской гребешок филе 100/130 зам., 300 г;high
+grechka;lavka;https://lavka.yandex.ru/good/krupa-grechnevaya-mistral-yadrica-900-gram;Крупа гречневая ядрица Мистраль 900 г;high
+grechka;lenta;https://lenta.com/product/krupa-grechnevaya-yadrica-altajjskaya-vs-rossiya-800g-77512/;Крупа гречневая PASSIM Алтайская ядрица, высший сорт, 800г;high
+grechka;magnit;https://magnit.ru/product/1393100200-grechka_yadritsa_uvelka_ekstra_800g;Гречка Увелка Экстра 800г;high
+grechka;vkusvill;https://vkusvill.ru/goods/krupa-grechnevaya-yadritsa-17699/;Крупа гречневая ядрица, 900 г;high
+grechnevye_spagetti;magnit;https://magnit.ru/product/1000303436-barilla_makaronnye_izdeliya_paghett_bez_glyutena_iz_kukuruznoy_i_risovoy_muki_400g_kartonnaya_upakov;Макароны Спагетти без глютена Barilla 400г;medium
+grechnevye_spagetti;vkusvill;https://vkusvill.ru/goods/lapsha-iz-grechnevoy-i-risovoy-muki-105157/;Лапша из гречневой и рисовой муки, без глютена;medium
+hashbraun;vkusvill;https://vkusvill.ru/goods/khashbraun-s-syrom-i-zelenyu-60066/;Хашбраун с сыром и зеленью, зам.;high
+hek;lenta;https://lenta.com/product/hek-potroshenyjj-obezglavlennyjj-1kg-razmorozhennyjj-rossiya-253365/;Хек потрошеный без головы (из замороженного сырья) ЛЕНТА FRESH, весовой;high
+hek;magnit;https://magnit.ru/product/8000087093-svoya_rybka_medalony_iz_file_kheka_400g_v_up;Медальоны из филе хека Своя Рыбка 400г;medium
+hek;vkusvill;https://vkusvill.ru/goods/khek-file-bez-kozhi-zam-113941/;Хек филе без кожи зам., 600 г;high
+hleb_grechnevyy;lavka;https://lavka.yandex.ru/good/izdelie-zernovoe-nehleb-grechkabread-iz-zelyonoj-grechki-so-lnom-450-gram;Нехлеб Grechkabread гречка-лён 400 г;high
+hleb_grechnevyy;vkusvill;https://vkusvill.ru/goods/izdelie-iz-p-z-grechnevyy-na-proroshchennoy-grechke-101455/;Изделие из п/з «Гречневый» на пророщенной гречке, 320 г;high
+hlebcy;lavka;https://lavka.yandex.ru/good/slajsy-iz-yader-zelyonoj-grechki-pikantnye-grechkabread-100-gram;Слайсы из ядер зелёной гречки 80 г;high
+hlebcy;lenta;https://lenta.com/product/hlebcy-grechnevye-s-vitaminami-rossiya-100g-176985/;Хлебцы гречневые DR KORNER с витаминами, 100г;medium
+hlebcy;magnit;https://magnit.ru/product/1000116472-khlebtsy_dr_korner_grechnevye_s_vitaminami_bez_glyutena_100g;Хлебцы гречневые с витаминами без глютена Dr.Korner 100г;medium
+hlebcy;vkusvill;https://vkusvill.ru/goods/khlebtsy-iz-zelenoy-grechki-s-zelenyu-i-semechkami-tykvy-98236/;Хлебцы из зеленой гречки с зеленью и семечками тыквы, 100 г;high
+humus;lavka;https://lavka.yandex.ru/good/humus-iz-lavki-klassicheskij-200-gram;Хумус классический Из Лавки 200 г;medium
+humus;vkusvill;https://vkusvill.ru/goods/khumus-marokkanskiy-s-vyalenymi-tomatami-76892/;Хумус «Марокканский» с вялеными томатами;high
+inzhir;lavka;https://lavka.yandex.ru/good/inzhir-chernyj-250-gram;Инжир черный 250 г;high
+inzhir;lenta;https://lenta.com/product/inzhir-svezhijj-ves-713803/;Инжир свежий, весовой;high
+inzhir;magnit;https://magnit.ru/product/1444282074-inzhir_1kg;Инжир;high
+inzhir;vkusvill;https://vkusvill.ru/goods/inzhir-21004/;Инжир, 250 г;high
+kabachki;lavka;https://lavka.yandex.ru/good/kabachki-500-gram-2;Кабачки 500 г;high
+kabachki;lenta;https://lenta.com/product/kabachki-gruntovye-39906/;Кабачки грунтовые, весовые;high
+kabachki;magnit;https://magnit.ru/product/3412080003-kabachki;Кабачки;high
+kabachki;vkusvill;https://vkusvill.ru/goods/kabachki-619/;Кабачки;high
+kakao;lavka;https://lavka.yandex.ru/good/kakao-poroshok-zolotoj-yarlyk-krasnyj-oktyabr-100-gram;Какао-порошок Золотой ярлык Красный Октябрь 100 г;high
+kakao;lenta;https://lenta.com/product/kakao-poroshok-natur-kup-rossiya-100g-346019/;Какао-порошок ЛЕНТА натуральный, 100г;high
+kakao;magnit;https://magnit.ru/product/1000125976-kakao_naturalnyy_zolotoy_yarlyk_100g;Какао-порошок Золотой ярлык 100г;high
+kakao;vkusvill;https://vkusvill.ru/goods/kakao-poroshok-24827/;Какао-порошок;high
+kartofel;lavka;https://lavka.yandex.ru/good/kartofel-mytyj-otbornyj-2-kilogram;Картофель мытый 2 кг;high
+kartofel;lenta;https://lenta.com/product/kartofel-belyjj-mytyjj-ves-118887/;Картофель белый мытый, весовой;high
+kartofel;magnit;https://magnit.ru/product/9072651210-kartofel_1kg;Картофель;high
+kartofel;vkusvill;https://vkusvill.ru/goods/kartofel-molodoy-64336/;Картофель молодой;high
+keshyu;lavka;https://lavka.yandex.ru/good/keshyu-sushyonyj-iz-lavki-120-gram;Кешью сушёный Из Лавки 120 г;high
+keshyu;lenta;https://lenta.com/product/keshyu-naturalnyjj-rossiya-200g-687075/;Кешью ЛЕНТА LIFE натуральный, 200г;high
+keshyu;magnit;https://magnit.ru/product/1000425106-premier_of_taste_keshyu_150g_d_p_td_kholding;Кешью натуральный Premiere of Taste 150г;high
+keshyu;vkusvill;https://vkusvill.ru/goods/keshyu-sushenyy-49689/;Кешью сушеный;high
+kinoa;lavka;https://lavka.yandex.ru/good/kinoa-agro-alyans-450-gram;Киноа Агро-Альянс 450 г;high
+kinoa;lenta;https://lenta.com/product/kinoa-ekstra-rossiya-450g-531865/;Киноа АГРО-АЛЬЯНС Экстра, 450г;high
+kinoa;magnit;https://magnit.ru/product/1000115066-mistral_kinoa_zerna_500g_m_up_mistral_treyding_12;Киноа Мистраль 500г;high
+kinoa;vkusvill;https://vkusvill.ru/goods/krupa-kinoa-mistral-zerna-500-g-46106/;Крупа киноа Мистраль зерна 500 г;high
+kisel_zheludochnyy;lenta;https://lenta.com/product/kisel-zheludochnyjj-nejjtralnyjj-rossiya-100g-590340/;Кисель ЛЕОВИТ Желудочный, нейтральный со злаками, 5х20г;medium
+kisel_zheludochnyy;magnit;https://magnit.ru/product/1000153791-leovit-kisel-zheludochnyy-neytralnyy-paketiki-20g-5sht;Кисель желудочный нейтральный пакетики Леовит 20г 5шт;high
+kivi;lavka;https://lavka.yandex.ru/good/kivi-krupnyj-iz-lavki-500-gram;Киви крупное Из Лавки 500 г;high
+kivi;lenta;https://lenta.com/product/kivi-ves-19377/;Киви, весовое;high
+kivi;magnit;https://magnit.ru/product/3412080035-kivi_1kg;Киви;high
+kivi;vkusvill;https://vkusvill.ru/goods/kivi-16556/;Киви;high
+kletchatka;vkusvill;https://vkusvill.ru/goods/psillium-otrubi-podorozhnika-31745/;Псиллиум (отруби подорожника);medium
+kostnyy_bulon;lavka;https://lavka.yandex.ru/good/bulon-kostnyj-govyazhij-probulion-zamorozhennyj-300-millilitre;Бульон говяжий костный ProBulion 300 мл;high
+kostnyy_bulon;vkusvill;https://vkusvill.ru/goods/bulon-kostnyy-govyazhiy-portsionnyy-110652/;Бульон костный говяжий порционный, замороженный, 1 кг;medium
+kotleta_govyadiny;lavka;https://lavka.yandex.ru/good/stejkburger-s-percem-iz-lavki-360-gram;Стейкбургер с перцем Из Лавки 360 г;high
+kotleta_govyadiny;vkusvill;https://vkusvill.ru/goods/kotleta-steykburger-38362/;Котлета "Стейкбургер";high
+kotlety_indeyki;lavka;https://lavka.yandex.ru/good/kotlety-indilajt-ohlazhdyonnye-400-gram;Котлеты Индилайт 400 г;high
+kotlety_indeyki;lenta;https://lenta.com/product/kotlety-iz-indejjki-rossiya-400g-553532/;Котлеты ЛОЖКАРЕВЪ из индейки, 400г;medium
+kotlety_indeyki;magnit;https://magnit.ru/product/1000417347-lozhkarev_kotlety_iz_indeyki_400g;Котлеты Ложкаревъ из индейки 400г;medium
+kotlety_indeyki;vkusvill;https://vkusvill.ru/goods/kotlety-iz-indeyki-dieticheskie-38076/;Котлеты из индейки "Диетические";high
+kotlety_krolika;vkusvill;https://vkusvill.ru/goods/kotlety-iz-krolika-12304/;Котлеты из кролика;high
+krevetki;lavka;https://lavka.yandex.ru/good/krevetki-korolevskie-belonogie-6080-iz-lavki-ochishennye-300-gram;Креветки королевские белоногие Из Лавки 300 г;high
+krevetki;lenta;https://lenta.com/product/krevetka-korolevskaya-ochishchennaya-vm-rossiya-300g-600919/;Креветки Королевские варено-мороженые БУХТА ИЗОБИЛИЯ очищенные, 300г;high
+krevetki;magnit;https://magnit.ru/product/1000570879-agama_krevetka_korol_s_m_ochishch_dlya_salata_krupn_300g_p_up;Креветка Agama королевская очищенная Для салата крупная свежемороженая 300г;high
+krevetki;vkusvill;https://vkusvill.ru/goods/krevetki-belonogie-korolevskie-v-m-50-60-67897/;Креветки белоногие "Королевские" в/м 50/60, 500 г;high
+kukuruza_mini;lavka;https://lavka.yandex.ru/good/kukuruza-mini-iz-lavki-bystrozamorozhennaya-300-gram;Кукуруза мини Из лавки 300 г;high
+kukuruza_mini;lenta;https://lenta.com/product/kukuruza-konservirovannaya-mini-indiya-370ml-748050/;Мини-кукуруза консервированная DOLCE ALBERO, 370мл;medium
+kukuruza_mini;magnit;https://magnit.ru/product/8000077740-premiere_of_taste_mini_kukuruza_tselaya_zam_400g;Кукуруза мини целая Premiere of taste 400г;high
+kukuruza_mini;vkusvill;https://vkusvill.ru/goods/kukuruza-mini-21394/;Кукуруза мини;high
+kukuruznyy_krahmal;lavka;https://lavka.yandex.ru/good/krahmal-kukuruznyj-iz-lavki-vysshij-sort-200-gram;Крахмал кукурузный Из Лавки 200 г;high
+kukuruznyy_krahmal;lenta;https://lenta.com/product/krahmal-kukuruznyjj-rossiya-200g-883714/;Крахмал кукурузный ВЫБОР СЕМЬИ, 200г;high
+kukuruznyy_krahmal;magnit;https://magnit.ru/product/1000567633-semeynye_sekrety_krakhmal_kukuruznyy_d_vyp_200g;Крахмал Семейные секреты Кукурузный для выпечки 200г;high
+kukuruznyy_krahmal;vkusvill;https://vkusvill.ru/goods/krakhmal-kukuruznyy-38450/;Крахмал кукурузный;high
+kuraga;lavka;https://lavka.yandex.ru/good/kuraga-semushka-150-gram;Курага Семушка 150 г;high
+kuraga;lenta;https://lenta.com/product/kuraga-naturalnaya-bez-kostochki-rossiya-200g-471037/;Курага DOLCE ALBERO натуральная без косточки, 200г;high
+kuraga;magnit;https://magnit.ru/product/1000200249-semushka_kuraga_150g_d_p_komservis_8;Курага Семушка 150г;high
+kuraga;vkusvill;https://vkusvill.ru/goods/kuraga-gornaya-kirgiziya-94293/;Курага горная (Киргизия), 150 г;high
+kurinoe_file;lavka;https://lavka.yandex.ru/good/grudka-cyplyonka-brojlera-file-petelinka-750-gram;Филе грудки цыплёнка Петелинка 750 г;high
+kurinoe_file;lenta;https://lenta.com/product/file-kurinoe-ohl-podlozhka-ves-rossiya-123265/;Филе куриное ПЕТЕЛИНКА, весовое;high
+kurinoe_file;magnit;https://magnit.ru/product/1000233462-file_tsb_okhl_lotok_1_kg_v_lotok_ooo_soyuzptitseprom_5;Филе цыпленка-бройлера;high
+kurinoe_file;vkusvill;https://vkusvill.ru/goods/kurinoe-file-gril-122839/;Куриное филе гриль;high
+lapsha_grech_ris;magnit;https://magnit.ru/product/1179990014-sen_soy_premium_lapsha_risovaya_300g_dzhiansi_ch_fuds_24;Лапша Sen Soy Premium Rice Vermicelli рисовая 300г;medium
+lapsha_grech_ris;vkusvill;https://vkusvill.ru/goods/lapsha-iz-grechnevoy-i-risovoy-muki-105157/;Лапша из гречневой и рисовой муки, без глютена;high
+limon;lavka;https://lavka.yandex.ru/good/limon-krupnyj-iz-lavki-220-gram;Лимон крупный Из Лавки 220 г;high
+limon;lenta;https://lenta.com/product/limony-ves-94429/;Лимоны, весовые;high
+limon;magnit;https://magnit.ru/product/9072651504-limony;Лимоны;high
+limon;vkusvill;https://vkusvill.ru/goods/limony-730/;Лимоны;high
+listya_salata;lavka;https://lavka.yandex.ru/good/salat-mesklam-125-gram;Салат Месклам 125 г;medium
+listya_salata;lenta;https://lenta.com/product/salat-listovojj-v-gorshochke-un-rossiya-1sht-580978/;Салат листовой, в горшочке;medium
+listya_salata;magnit;https://magnit.ru/product/3412157101-salat_aysberg_1sht;Салат Айсберг М Свежесть 1шт;medium
+listya_salata;vkusvill;https://vkusvill.ru/goods/salat-listovoy-v-gorshochke-18852/;Салат Листовой в горшочке;medium
+losos;lenta;https://lenta.com/product/losos-atlanticheskijj-stejjk-razmorozhennyjj-rossiya-299997/;Лосось Атлантический стейк (из замороженного сырья) ЛЕНТА FRESH, весовой;high
+losos;magnit;https://magnit.ru/product/8000098000-fish_more_losos_steyk_s_m_na_kozhe_400g_v_u;Лосось стейк свежемороженый на коже Fish&More 400г;high
+losos;vkusvill;https://vkusvill.ru/goods/semga-steyk-okhl-63583/;Семга стейк охл., 450 г;high
+mango;lavka;https://lavka.yandex.ru/good/mango-ekstra-300-gram;Манго спелое 300 г;high
+mango;lenta;https://lenta.com/product/mango-egipet-speloe-ves-6838/;Манго спелое ЛЕНТА FRESH, весовое;high
+mango;magnit;https://magnit.ru/product/1444282033-mango;Манго спелое;high
+mango;vkusvill;https://vkusvill.ru/goods/mango-egipet-23074/;Манго Египет;high
+mannaya_krupa;lavka;https://lavka.yandex.ru/good/krupa-mannaya-mistral-800-gram;Крупа манная Мистраль 800 г;high
+mannaya_krupa;lenta;https://lenta.com/product/krupa-mannaya-marka-m-rossiya-700g-64357/;Крупа манная 365 ДНЕЙ марка М, 700г;high
+mannaya_krupa;magnit;https://magnit.ru/product/1393100205-uvelka_krupa_mannaya_700g_resurs_6;Крупа Увелка Манная 700г;high
+mannaya_krupa;vkusvill;https://vkusvill.ru/goods/krupa-mannaya-makfa-iz-tverdykh-sortov-700-g-40587/;Крупа манная Макфа из твердых сортов 700 г;high
+marmelad;lenta;https://lenta.com/product/zhevatelnyjj-marmelad-zolotye-mishki-turciya-80g-705270/;Мармелад жевательный HARIBO Золотые Мишки, 80г;medium
+marmelad;vkusvill;https://vkusvill.ru/goods/marmelad-kosichki-sestrichki-iz-yablok-110249/;Мармелад «Косички-сестрички» из яблок;high
+masliny;lavka;https://lavka.yandex.ru/good/masliny-federici-bez-kostochki-300-gram;Маслины без косточки Federici 300 г;high
+masliny;lenta;https://lenta.com/product/masliny-bk-ispaniya-300g-541247/;Маслины без косточки FILIPPO BERIO, 300г;high
+masliny;magnit;https://magnit.ru/product/1000155121-bonduelle_masliny_b_k_300g_zh_b_s_kl_12;Маслины Бондюэль без косточки 300г;high
+masliny;vkusvill;https://vkusvill.ru/goods/masliny-bez-kostochki-88540/;Маслины без косточки, ж/б, 280 г;high
+mindalnoe_moloko;lavka;https://lavka.yandex.ru/good/napitok-mindalnyj-iz-lavki-na-rastitelnoj-osnove-1-liter;Напиток миндальный Из Лавки 1 л;high
+mindalnoe_moloko;lenta;https://lenta.com/product/napitok-rastitelnyjj-barista-mindalnyjj-bez-sahara-12-rossiya-1l-697338/;Напиток растительный PLANTO Barista Миндальный без сахара 1,2%, 1л;high
+mindalnoe_moloko;magnit;https://magnit.ru/product/1000526756-planto_nap_mind_bez_sakhar_obog_kalts_u_p_1l_tba;Напиток растительный миндальный без сахара Planto 1.2% 1л;high
+mindalnoe_moloko;vkusvill;https://vkusvill.ru/goods/napitok-rastitelnyy-moloko-mindalnoe-86771/;Напиток растительный «Moloko миндальное», 1л;high
+morkov;lenta;https://lenta.com/product/morkov-ves-1kg-303639/;Морковь, весовая;high
+morkov;magnit;https://magnit.ru/product/9072651201-morkov;Морковь;high
+morkov;vkusvill;https://vkusvill.ru/goods/morkov-606/;Морковь;high
+morkovnyy_keks;vkusvill;https://vkusvill.ru/goods/keks-morkovnyy-s-gretskim-orekhom-68131/;Кекс морковный с грецким орехом;high
+morskaya_kapusta;lavka;https://lavka.yandex.ru/good/salat-iz-morskoj-kapusty-iz-lavki-200-gram;Салат из морской капусты Из Лавки 200 г;medium
+morskaya_kapusta;lenta;https://lenta.com/product/salat-iz-morskojj-kapusty-klassicheskijj-rossiya-200g-175726/;Морская капуста маринованная РУССКОЕ МОРЕ Классическая, 200г;medium
+morskaya_kapusta;magnit;https://magnit.ru/product/1000146391-klassicheskaya_kapusta_morskaya_marin_200g_v_u_santa_bremor_12;Морская капуста Классическая Русское Море 200г;high
+morskaya_kapusta;vkusvill;https://vkusvill.ru/goods/salat-iz-morskoy-kapusty-bez-uksusa-st-b-20321/;Салат из морской капусты без уксуса ст/б, 400 г;medium
+ogurcy;lavka;https://lavka.yandex.ru/good/ogurcy-korotkoplodnye-450-gram;Огурцы короткоплодные 450 г;high
+ogurcy;lenta;https://lenta.com/product/ogurcy-sredneplodnye-gladkie-ves-162743/;Огурцы среднеплодные гладкие, весовые;high
+ogurcy;magnit;https://magnit.ru/product/3412110001-ogurtsy_gladkie;Огурцы среднеплодные;high
+ogurcy;vkusvill;https://vkusvill.ru/goods/ogurtsy-korotkoplodnye-609/;Огурцы короткоплодные;high
+olivkovoe_maslo;lavka;https://lavka.yandex.ru/good/maslo-olivkovoe-monini-classico-extra-virgin-500-millilitre;Масло оливковое Monini Classico Extra Virgin 500 мл;high
+olivkovoe_maslo;lenta;https://lenta.com/product/maslo-olivkovoe-extra-virgin-sb-italiya-500ml-289098/;Масло оливковое FILIPPO BERIO Extra Virgin, 500мл;high
+olivkovoe_maslo;magnit;https://magnit.ru/product/3022640002-olivkovoe_maslo_borges_extra_virgin_500ml;Масло оливковое Borges Extra Virgin Original 500мл;high
+olivkovoe_maslo;vkusvill;https://vkusvill.ru/goods/maslo-olivkovoe-extra-virgin-1213/;Масло оливковое Extra Virgin, Греция;high
+onigiri;magnit;https://magnit.ru/product/8000068225-pro_sushi_onigiri_tunets_spaysi_100g_pl_kon_optprodukt;Онигири с тунцом и соусом спайси 100г;medium
+onigiri;vkusvill;https://vkusvill.ru/goods/onigiri-s-zapechennym-tuntsom-96649/;Онигири с запеченным тунцом;high
+ovsyanye_hlopya;lavka;https://lavka.yandex.ru/good/hlopya-ovsyanye-krupnye-nordic-bez-glyutena-500-gram;Хлопья овсяные из цельного зерна Nordic без глютена 500 г;high
+ovsyanye_hlopya;lenta;https://lenta.com/product/hlopya-ovsyanye-bglyutena-rossiya-375g-709241/;Хлопья овсяные безглютеновые ЛЕНТА LIFE, 375г;high
+ovsyanye_hlopya;magnit;https://magnit.ru/product/1000421261-magnit_obraz_zhizni_khlopya_ovsyanye_bez_glyutena_375g_fl_p;Хлопья овсяные без глютена М Образ Жизни 375г;high
+ovsyanye_hlopya;vkusvill;https://vkusvill.ru/goods/khlopya-ovsyanye-iz-golozernogo-ovsa-bez-glyutena-34756/;Хлопья овсяные из голозерного овса без глютена;high
+pechene_mariya;lenta;https://lenta.com/product/pechene-bglyutena-maria-ispaniya-380g-483747/;Печенье безглютеновое GULLON Maria, 400г;high
+pechene_mariya;vkusvill;https://vkusvill.ru/goods/pechene-lyubyatovo-zatyazhnoe-mariya-156-g-109038/;Печенье Любятово затяжное Мария 156 г;medium
+pechene_ovsyanoe;lavka;https://lavka.yandex.ru/good/pechene-ovsyanoe-iz-lavki-klassicheskoe-bez-sahara-i-glyutena-85-gram;Печенье овсяное Из Лавки классическое 85 г;medium
+pechene_ovsyanoe;vkusvill;https://vkusvill.ru/goods/pechene-ovsyanoe-s-mindalem-bez-glyutena-82842/;Печенье «Овсяное с миндалем» без глютена, 85 г;high
+pechene_vitlen;lenta;https://lenta.com/product/pechene-sdobnoe-s-grechnevojj-mukojj-rossiya-200g-493134/;Печенье сдобное VITLEN с гречневой мукой, без сахара, 200г;high
+perepelinye_yayca;lenta;https://lenta.com/product/yajjco-perepelinoe-rossiya-20sht-712398/;Яйцо перепелиное ЛЕНТА FRESH, 20шт;high
+perepelinye_yayca;magnit;https://magnit.ru/product/2047000012-yaytso_perepelinoe_20_sht_boks_6;Яйца перепелиные 20шт;high
+perepelinye_yayca;vkusvill;https://vkusvill.ru/goods/yaytso-perepelinoe-pishchevoe-fermerskoe-20sht-96131/;Яйцо перепелиное пищевое фермерское 20шт;high
+persik;lavka;https://lavka.yandex.ru/good/persiki-ploskie-iz-lavki-krym-500-gram;Персики плоские Из Лавки Крым 500 г;high
+persik;lenta;https://lenta.com/product/persiki-ves-50061/;Персики, весовые;high
+persik;magnit;https://magnit.ru/product/1444282012-nektariny;Нектарины;medium
+persik;vkusvill;https://vkusvill.ru/goods/persik-654/;Персик;high
+persik_ili_nektarin;lavka;https://lavka.yandex.ru/good/nektariny-500-gram;Нектарины 500 г;high
+persik_ili_nektarin;lenta;https://lenta.com/product/nektariny-ves-50069/;Нектарины, весовые;high
+persik_ili_nektarin;magnit;https://magnit.ru/product/1444282012-nektariny;Нектарины;high
+persik_ili_nektarin;vkusvill;https://vkusvill.ru/goods/nektarin-655/;Нектарин;high
+pomidory_cherri;lavka;https://lavka.yandex.ru/good/pomidory-cherri-250-gram;Черри 250 г;high
+pomidory_cherri;lenta;https://lenta.com/product/tomaty-cherri-krasnye-250g-720789/;Томаты черри ФЛАМЕНКО красные, 250г;high
+pomidory_cherri;magnit;https://magnit.ru/product/2400023273-tomaty_cherri_tsena_za_1_kg_6;Томаты Черри;high
+pomidory_cherri;vkusvill;https://vkusvill.ru/goods/tomaty-cherri-krasnye-21629/;Томаты черри красные, 250 г;high
+razryhlitel;lavka;https://lavka.yandex.ru/good/razryhlitel-testa-drbakers-10-gram;Разрыхлитель теста Dr.Bakers 10 г;high
+razryhlitel;lenta;https://lenta.com/product/razryhlitel-testa-rossiya-10g-26531/;Разрыхлитель теста DR.BAKERS, 10г;high
+razryhlitel;magnit;https://magnit.ru/product/2199910054-dr_oetker_razrykhlitel_d_testa_10g_onken_110;Разрыхлитель теста Dr. Bakers 10г;high
+razryhlitel;vkusvill;https://vkusvill.ru/goods/razrykhlitel-testa-dr-bakers-10-g-49982/;Разрыхлитель теста Dr. Bakers 10 г;high
+ris_kruglyy;lavka;https://lavka.yandex.ru/good/krupa-risovaya-iz-lavki-shlifovannaya-900-gram;Рис круглозёрный Из Лавки 900 г;high
+ris_kruglyy;lenta;https://lenta.com/product/ris-kruglozernyjj-shlifovannyjj-rossiya-800g-86146/;Рис круглозерный УВЕЛКА шлифованный, 800г;high
+ris_kruglyy;magnit;https://magnit.ru/product/1000225668-ris_kruglozernyy_uvelka_krasnodarskiy_800g;Рис Увелка Круглозерный 800г;high
+ris_kruglyy;vkusvill;https://vkusvill.ru/goods/ris-uvelka-kruglozernyy-shlifovannyy-800-g-54096/;Рис Увелка круглозерный шлифованный 800 г;high
+risovaya_muka;lavka;https://lavka.yandex.ru/good/muka-risovaya-garnec-bez-glyutena-500-gram;Мука рисовая Garnec без глютена 500 г;high
+risovaya_muka;lenta;https://lenta.com/product/muka-risovaya-rossiya-500g-691419/;Мука рисовая ЛЕНТА, 500г;high
+risovaya_muka;magnit;https://magnit.ru/product/1000252011-s_pudov_muka_risovaya_500g_bumazhnyy_paket_khlebzernoprodukt_ooo_10;Мука С.Пудовъ Рисовая 500г;high
+risovaya_muka;vkusvill;https://vkusvill.ru/goods/muka-risovaya-83790/;Мука рисовая, 500 г;high
+risovye_chipsy;lavka;https://lavka.yandex.ru/good/chipsy-celnozernovye-kornersy-drkorner-tajskij-perec-50-gram;Корнерсы цельнозерновые Dr. Korner перец 50 г;medium
+risovye_chipsy;lenta;https://lenta.com/product/chipsy-celnozernovye-kukuruzno-risovye-s-paprikojj-i-chili-rossiya-50g-477645/;Чипсы цельнозерновые рисово-кукурузные DR KORNER Корнерсы, с паприкой и чили, 50г;medium
+risovye_chipsy;vkusvill;https://vkusvill.ru/goods/chipsy-risovye-s-morskoy-kapustoy-klassicheskie-50812/;Чипсы рисовые с морской капустой классические, 20 г;high
+rukkola;lavka;https://lavka.yandex.ru/good/rukola-125-gram;Рукола 125 г;high
+rukkola;lenta;https://lenta.com/product/salat-rukkola-75g-279198/;Салат Руккола, 75г;high
+rukkola;vkusvill;https://vkusvill.ru/goods/salat-rukola-29850/;Салат Рукола, 125 г;high
+semga_slabosol;lavka;https://lavka.yandex.ru/good/syomga-slabosolyonaya-russkoe-more-file-kusok-200-gram;Сёмга слабосолёная Русское море кусок 200 г;high
+semga_slabosol;lenta;https://lenta.com/product/semga-file-kusok-sls-belarus-200g-610438/;Семга слабосоленая РУССКОЕ МОРЕ филе-кусок, 200г;high
+semga_slabosol;magnit;https://magnit.ru/product/3328360051-russkoe_more_semga_s_sol_f_kus_200g_v_u_6;Семга Русское море филе-кусок слабосоленый 200г;high
+semga_slabosol;vkusvill;https://vkusvill.ru/goods/semga-slabosolenaya-lomtiki-65549/;Семга слабосоленая ломтики, 100 г;high
+shipovnik;vkusvill;https://vkusvill.ru/goods/shipovnik-sushenyy-910/;Шиповник сушеный;high
+shpinat;lavka;https://lavka.yandex.ru/good/shpinat-mini-125-gram;Шпинат 125 г;high
+shpinat;lenta;https://lenta.com/product/salat-shpinat-75g-279196/;Салат Шпинат, 75г;high
+shpinat;magnit;https://magnit.ru/product/1445100134-shpinat_50g;Шпинат М Свежесть 50г;high
+shpinat;vkusvill;https://vkusvill.ru/goods/salat-shpinat-29851/;Салат Шпинат, 125 г;high
+smes_risa;lenta;https://lenta.com/product/ris-ekstra-buryjjdikijj-smes-risa-pak-1-sort-80g5-rossiya-400g-520866/;Смесь риса АГРО-АЛЬЯНС Экстра бурого и дикого в пакетиках, 5х80г;medium
+smes_risa;magnit;https://magnit.ru/product/8000131688-natsional_smes_dikogo_i_burogo_risa_500g_p_up;Смесь дикого и бурого риса Националь 500г;high
+smes_risa;vkusvill;https://vkusvill.ru/goods/smes-risa-burogo-i-dikogo-paketiki-29383/;Смесь риса бурого и дикого (пакетики);high
+steyk_ribay;lavka;https://lavka.yandex.ru/good/stejk-striplojn-lavka-100-iz-govyadiny-200-gram;Стейк Стриплойн «Лавка 100» из говядины 200 г;high
+steyk_ribay;lenta;https://lenta.com/product/govyadina-stejjk-ribajj-blek-angus-rvk-ohl-rossiya-320g-359721/;Стейк из мраморной говядины МИРАТОРГ Рибай Black Angus, 320г;high
+steyk_ribay;magnit;https://magnit.ru/product/1000301762-steyk_miratorg_black_angus_tender_mramornaya_govyadina_260g;Стейк Мираторг Black Angus Тендер мраморная говядина 260г;medium
+steyk_ribay;vkusvill;https://vkusvill.ru/goods/steyk-ribay-iz-govyadiny-20751/;Стейк Рибай из говядины;high
+svekla;lavka;https://lavka.yandex.ru/good/svyokla-rossiya-500-gram;Свёкла молодая 500 г;high
+svekla;lenta;https://lenta.com/product/svekla-ves-1kg-300884/;Свекла весовая;high
+svekla;magnit;https://magnit.ru/product/3412070011-svekla;Свекла;high
+svekla;vkusvill;https://vkusvill.ru/goods/svekla-molodaya-20832/;Свекла молодая;high
+syr_adygeyskiy;vkusvill;https://vkusvill.ru/goods/syr-koziy-adygeyskiy-43314/;Сыр козий "Адыгейский", 150 г;high
+syr_koziy;lavka;https://lavka.yandex.ru/good/syr-kozij-tvorozhnyj-chevre-president-65percent-140-gram;Сыр козий творожный Chevre President 140 г;high
+syr_koziy;magnit;https://magnit.ru/product/1000567016-premiere_of_taste_syr_shevr_klassicheskiy_iz_koz_mol_100g;Сыр Классический из козьего молока Premiere of Taste 100г;high
+syr_koziy;vkusvill;https://vkusvill.ru/goods/syr-tvorozhnyy-koziy-25168/;Сыр творожный "Козий", 140 г;high
+tartin;vkusvill;https://vkusvill.ru/goods/tartin-pshenichno-rzhanoy-32931/;Тартин пшенично-ржаной, половинка;high
+telyachi_schechki;vkusvill;https://vkusvill.ru/goods/shchechka-telyachya-tomlenaya-47835/;Щечка телячья томленая, 300 г;medium
+tofu;lavka;https://lavka.yandex.ru/good/syr-tofu-iz-lavki-300-gram;Тофу Из Лавки 300 г;high
+tofu;lenta;https://lenta.com/product/tofu-rossiya-120g-695554/;Тофу ЛЕНТА LIFE, 120г;high
+tofu;magnit;https://magnit.ru/product/1000237883-syr_tofu_selskiy_dom_klassicheskiy_4_8_250g;Продукт пищевой соевый Сельский дом Тофу классический 4.8% 250г;high
+tofu;vkusvill;https://vkusvill.ru/goods/tofu-klassicheskiy-110197/;Тофу "Классический", 250 г;high
+tomaty_rozovye;lavka;https://lavka.yandex.ru/good/pomidory-rozovye-byche-serdce-iz-lavki-dagestan-600-gram;Помидоры Из Лавки Дагестан Бычье сердце 600 г;high
+tomaty_rozovye;lenta;https://lenta.com/product/tomaty-rozovye-ves-239792/;Томаты розовые, весовые;high
+tomaty_rozovye;magnit;https://magnit.ru/product/8000148768-tomaty_rozovye_1kg_bf_;Томаты розовые;high
+tomaty_rozovye;vkusvill;https://vkusvill.ru/goods/tomaty-rozovye-15378/;Томаты розовые;high
+tost;lavka;https://lavka.yandex.ru/good/izdelie-zernovoe-nehleb-grechkabread-iz-zelyonoj-grechki-so-lnom-450-gram;Нехлеб Grechkabread гречка-лён 400 г;medium
+tost;lenta;https://lenta.com/product/hleb-pan-blanco-belyjj-turciya-250g-476606/;Хлеб безглютеновый DR.SСHAER Pan Blanco белый, 250г;high
+tost;vkusvill;https://vkusvill.ru/goods/izdelie-kh-b-bez-glyutena-s-semenami-96561/;Изделие х/б без глютена с семенами, нарезка;medium
+tunec_konserv;lavka;https://lavka.yandex.ru/good/tunec-file-skipdzhek-sk-naturalnyj-140-gram;Тунец Скипджек филе Sk натуральный 140 г;high
+tunec_konserv;magnit;https://magnit.ru/product/1000279455-file_tuntsa_maguro_naturalnoe_170g;Желтоперый тунец натуральный филе-кусочки Магуро 170г;high
+tunec_konserv;vkusvill;https://vkusvill.ru/goods/tunets-polosatyy-vkusnye-konservy-kusochki-nat-pauch-123833/;Тунец (полосатый) Вкусные консервы кусочки нат. пауч, 100 г;high
+tunec_steyk;lavka;https://lavka.yandex.ru/good/file-tunca-zheltopyorogo-iz-lavki-bez-kozhi-500-gram;Тунец желтопёрый филе Из Лавки без кожи 500 г;medium
+tunec_steyk;lenta;https://lenta.com/product/tunec-stejjk-razmorozhennyjj-rossiya-489446/;Тунец стейк (из замороженного сырья) ЛЕНТА FRESH, весовой;high
+tunec_steyk;magnit;https://magnit.ru/product/8000066827-fish_more_tunets_steyk_s_m_b_kozh_b_kost_500g;Стейк из тунца свежемороженый без кожи без костей Fish&More 500г;high
+tykva;lenta;https://lenta.com/product/tykva-novyjj-urozhajj-ves-1kg-354838/;Тыква новый урожай, весовая;high
+tykva;magnit;https://magnit.ru/product/2400016024-tykva_1kg;Тыква;high
+tykva;vkusvill;https://vkusvill.ru/goods/tykva-1212/;Тыква;high
+vanilnyy_sahar;lavka;https://lavka.yandex.ru/good/sahar-vanilnyj-drbakers-8-gram;Ванильный сахар Dr.Bakers 8 г;high
+vanilnyy_sahar;lenta;https://lenta.com/product/vanilnyjj-sahar-rossiya-10gr-427563/;Сахар ванильный ЛЕНТА, 10г;high
+vanilnyy_sahar;magnit;https://magnit.ru/product/1000292569-magnit_semeynye_sekrety_vanil_sakhar_s_nat_vanilyu_10g_50;Сахар Магнит с натуральной ванилью 10г;high
+vanilnyy_sahar;vkusvill;https://vkusvill.ru/goods/sakhar-dr-bakers-vanilnyy-8-g-50303/;Сахар Dr. Bakers Ванильный 8 г;high
+velle_pitevoy_ovsyanyy;lavka;https://lavka.yandex.ru/good/ovsyanyj-napitok-velle-malina-230-gram;Напиток овсяный Velle малина 230 г;high
+velle_pitevoy_ovsyanyy;magnit;https://magnit.ru/product/1000528266-velle_ovsyanyy_produkt_pit_malina_230g_pl_but;Йогурт питьевой овсяный малина Velle 230г;high
+vermishel_bezglyut;lavka;https://lavka.yandex.ru/good/makarony-spagetti-iz-kukuruzno-risovoj-muki-iz-lavki-bez-glyutena-300-gram;Спагетти из кукурузно-рисовой муки Из Лавки без глютена 300 г;medium
+vermishel_bezglyut;lenta;https://lenta.com/product/izdeliya-makaronnye-vermishel-iz-kukuruz-muki-s-dob-amarantovojj-rossiya-250g-721097/;Макароны безглютеновые ЛЕНТА LIFE Вермишель, из кукурузной муки с амарантовой, 250г;high
+vermishel_bezglyut;magnit;https://magnit.ru/product/1000355008-federici_izdeliya_makaronnye_lapsha_dlinnaya_bez_glyutena_250g_polietilenovaya_upakovka_obshchestvo_;Изделия макаронные Лапша длинная без глютена Federici 250г;medium
+vermishel_bezglyut;vkusvill;https://vkusvill.ru/goods/makarony-vermishel-iz-kukuruznoy-muki-23223/;Макароны «Вермишель» из кукурузной муки;high
+vetchina_indeyki;lavka;https://lavka.yandex.ru/good/vetchina-iz-myasa-indejki-iz-lavki-bez-glyutena-150-gram;Ветчина из мяса индейки Из Лавки 150 г;high
+vetchina_indeyki;lenta;https://lenta.com/product/vetchina-klassicheskaya-iz-myasa-indejjki-pa-ves-rossiya-637508/;Ветчина из мяса индейки ГАРИБАЛЬДИ Классическая, весовая;high
+vetchina_indeyki;magnit;https://magnit.ru/product/8000024869-indilayt_vetchina_iz_file_indeyki_0_4kg_p_o;Ветчина из филе индейки Индилайт 400г;medium
+vetchina_indeyki;vkusvill;https://vkusvill.ru/goods/vetchina-iz-myasa-indeyki-bez-glyutena-90069/;Ветчина из мяса индейки без глютена;high
+yagody;lavka;https://lavka.yandex.ru/good/malina-125-gram-3;Малина 125 г;medium
+yagody;lenta;https://lenta.com/product/golubika-svezhaya-125g-168863/;Голубика свежая, 125г;high
+yagody;vkusvill;https://vkusvill.ru/goods/malina-18641/;Малина, 125 г;medium
+yazyk_govyazhiy;lavka;https://lavka.yandex.ru/good/yazyk-govyazhij-otvarnoj-narezannyj-ozon-fresh-170-gram;Язык говяжий отварной Из Лавки 150 г;high
+yazyk_govyazhiy;lenta;https://lenta.com/product/yazyk-govyazhijj-otvarnojj-narezannyjj-ves-rossiya-74744/;Язык говяжий отварной, нарезка ЛЕНТА FRESH, весовой;high
+yazyk_govyazhiy;vkusvill;https://vkusvill.ru/goods/yazyk-govyazhiy-traditsionnyy-21384/;Язык говяжий «Традиционный», нарезка;high
