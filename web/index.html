@@ -551,7 +551,8 @@ let supData = null;                          // БАДы пользовател�
 let nav = {tab: 'today', stack: []};
 let st = {cookDays: 1, editPlace: null, editRec: null,
           shopGroup: localStorage.getItem('shopGroup') || 'cat',
-          store: localStorage.getItem('shopStore') || '', buyAll: null, buyList: [], buyIdx: 0,
+          store: localStorage.getItem('shopStore') || '', buyAll: null, buyList: [], buyIdx: 0, buyStore: '',
+          exclStores: new Set(JSON.parse(localStorage.getItem('shopExcl') || '[]')),
           checked: new Set(JSON.parse(localStorage.getItem('shopChecked') || '[]'))};
 
 /* ---------- утилиты ---------- */
@@ -1301,8 +1302,8 @@ function storeUrl(it, sst) {
   }
   return sst.search.replace('{q}', encodeURIComponent(it.q || it.name));
 }
-function openIn(id) {
-  const sst = storeOf(st.store), it = (st.buyAll || []).find(x => x.id === id);
+function openIn(id, store) {
+  const sst = storeOf(store || st.buyStore || st.store), it = (st.buyAll || []).find(x => x.id === id);
   if (sst && it) openExt(storeUrl(it, sst));
 }
 function pickStore() {
@@ -1326,6 +1327,7 @@ async function copyList() {
 /* покупка по списку: одна позиция за раз — открыть в магазине, отметить, дальше */
 function buyRun() {
   if (!st.buyAll) return toast('Список ещё загружается');
+  st.buyStore = st.store;
   st.buyList = st.buyAll.filter(it => !st.checked.has('w:' + it.id));
   st.buyIdx = 0;
   if (!st.buyList.length) return toast('Всё уже куплено');
@@ -1333,7 +1335,7 @@ function buyRun() {
 }
 function buyStep(d) {
   st.buyIdx += d;
-  const sst = storeOf(st.store), list = st.buyList;
+  const sst = storeOf(st.buyStore || st.store), list = st.buyList;
   if (st.buyIdx >= list.length) {
     return showSheet(`<div class="empty">Список пройден 🎉</div>
       <div class="note-acts"><button class="btn pri" onclick="closeSheet()">Готово</button></div>`);
@@ -1353,6 +1355,103 @@ function buyStep(d) {
     <div class="note-acts" style="justify-content:center"><button class="btn gh" onclick="closeSheet()">Закрыть</button></div>
   </div>`);
 }
+/* ---- корзины по магазинам: минимум магазинов, каждый товар — в самую большую корзину, где есть его карточка ---- */
+const CARD_STORES = ['vkusvill', 'lenta', 'magnit', 'lavka'];   // сети, где подобраны карточки
+const MIN_BASKET = 3;                                            // меньше — не отдельный заказ
+function planBaskets(items) {
+  const avail = it => CARD_STORES.filter(x => !st.exclStores.has(x) && cardOf(it, storeOf(x)));
+  const withCards = items.filter(it => avail(it).length), rest = items.filter(it => !avail(it).length);
+  const chosen = [], left = new Set(withCards.map(it => it.id));
+  while (left.size) {                       // жадно: магазин, закрывающий больше всего оставшегося
+    let best = null, bestN = 0;
+    for (const x of CARD_STORES) {
+      if (chosen.includes(x) || st.exclStores.has(x)) continue;
+      const n = withCards.filter(it => left.has(it.id) && avail(it).includes(x)).length;
+      if (n > bestN) { best = x; bestN = n; }
+    }
+    if (!best) break;
+    chosen.push(best);
+    withCards.forEach(it => { if (avail(it).includes(best)) left.delete(it.id); });
+  }
+  const size = {};
+  chosen.forEach(x => size[x] = withCards.filter(it => avail(it).includes(x)).length);
+  const baskets = {};
+  chosen.forEach(x => baskets[x] = []);
+  for (const it of withCards) {             // не дробим: товар едет в самую крупную подходящую корзину
+    const opts = chosen.filter(x => avail(it).includes(x))
+      .sort((a, b) => size[b] - size[a] || chosen.indexOf(a) - chosen.indexOf(b));
+    baskets[opts[0]].push(it);
+  }
+  let list = chosen.map(x => ({ store: x, items: baskets[x] })).filter(b => b.items.length)
+                   .sort((a, b) => b.items.length - a.items.length);
+  // ради 1–2 позиций отдельный заказ не имеет смысла: сначала пробуем переложить их
+  // в уже собранную корзину, и только по-настоящему бездомные идут докупаться отдельно
+  const dropped = [];
+  if (list.length > 1) {
+    const small = list.filter(b => b.items.length < MIN_BASKET);
+    if (small.length < list.length) {
+      list = list.filter(b => b.items.length >= MIN_BASKET);
+      small.forEach(b => b.items.forEach(it => {
+        const home = list.find(k => avail(it).includes(k.store));
+        home ? home.items.push(it) : dropped.push(it);
+      }));
+      list.sort((a, b) => b.items.length - a.items.length);
+    }
+  }
+  return { baskets: list, rest, dropped };
+}
+function buyBasket(store) {
+  const b = (st.baskets || []).find(x => x.store === store);
+  if (!b) return;
+  st.buyStore = store; st.buyIdx = 0;
+  st.buyList = b.items.filter(it => !st.checked.has('w:' + it.id));
+  if (!st.buyList.length) return toast('В этой корзине всё куплено');
+  buyStep(0);
+}
+function exclStore(store, on) {
+  on ? st.exclStores.add(store) : st.exclStores.delete(store);
+  localStorage.setItem('shopExcl', JSON.stringify([...st.exclStores]));
+  renderShop();
+}
+function basketRow(it, store) {
+  const key = 'w:' + it.id, on = st.checked.has(key), sst = storeOf(store), card = sst && cardOf(it, sst);
+  const days = [...new Set(it.days)].map(d => DS[d]).join(', ');
+  const meta = [it.qty.packs && it.qty.packs > 1 ? it.qty.packs + ' уп.' : null, it.tag, days].filter(Boolean).join(' · ');
+  const alt = !card && !on ? CARD_STORES.filter(x => x !== store && !st.exclStores.has(x) && cardOf(it, storeOf(x))).map(x =>
+      ` · <span class="link" onclick="openIn('${esc(it.id)}','${x}')">есть в ${esc(storeOf(x).short)}</span>`).join('') : '';
+  const open = sst && !on ? `<span class="meta" onclick="event.stopPropagation()"><span class="link" style="font-size:12px"
+      onclick="openIn('${esc(it.id)}','${sst.id}')">${card ? '🛒 ' + esc(card.name || 'открыть карточку') : '🔍 найти в ' + esc(sst.short || sst.name)}</span>${alt}</span>` : '';
+  return `<div class="chk ${on ? 'on' : ''}" onclick="tick('${esc(key)}')">
+    <span class="box">✓</span>
+    <span class="lbl">${esc(it.name)}${it.shelf < 8 ? clock(it.shelf) : ''}<span class="meta">${esc(meta)}</span>${open}</span>
+    <span class="amt num">${it.qty.value} ${esc(it.qty.unit)}</span></div>`;
+}
+function renderBaskets(items) {
+  const { baskets, rest, dropped } = planBaskets(items);
+  st.baskets = baskets;
+  const free = CARD_STORES.filter(x => !st.exclStores.has(x));
+  const main = baskets[0] ? baskets[0].store : (free.includes(st.store) ? st.store : free[0] || '');
+  const cardStore = it => free.find(x => cardOf(it, storeOf(x)));
+  let html = baskets.map(b => {
+    const sst = storeOf(b.store), left = b.items.filter(it => !st.checked.has('w:' + it.id)).length;
+    return `<div class="sect">🛒 ${esc(sst.name)} · ${b.items.length}</div><div class="card">` +
+      b.items.map(it => basketRow(it, b.store)).join('') +
+      `<div class="acts">${left
+        ? `<button class="btn pri" onclick="buyBasket('${b.store}')">Собрать по порядку · ${left}</button>
+           <button class="btn gh" onclick="exclStore('${b.store}', true)">не заказывать здесь</button>`
+        : '<span style="padding:6px 2px;font-size:12.5px;color:var(--ink3)">✓ всё куплено</span>'}</div></div>`;
+  }).join('');
+  if (dropped.length)                          // карточка есть, но ради пары позиций заказ не делаем
+    html += `<div class="sect">Докупить отдельно · ${dropped.length}</div><div class="card">` +
+      dropped.map(it => basketRow(it, cardStore(it) || main)).join('') + '</div>';
+  if (rest.length)
+    html += `<div class="sect">Без карточки — найти поиском · ${rest.length}</div><div class="card">` +
+      rest.map(it => basketRow(it, main)).join('') + '</div>';
+  if (st.exclStores.size)
+    html += `<div style="text-align:center;font-size:12.5px;color:var(--ink3);padding:2px 0 8px">Не заказываем: ` +
+      [...st.exclStores].map(x => `${esc(storeOf(x).name)} <span class="link" onclick="exclStore('${x}', false)">вернуть</span>`).join(' · ') + '</div>';
+  document.getElementById('shopList').innerHTML = html || '<div class="card"><div class="empty">Список пуст</div></div>';
+}
 function buyDone(id) {
   st.checked.add('w:' + id);
   localStorage.setItem('shopChecked', JSON.stringify([...st.checked]));
@@ -1363,8 +1462,6 @@ async function renderShop() {
   document.getElementById('shopHead').innerHTML = '';
   const sst = storeOf(st.store);
   const storeBar = document.getElementById('storeBar');
-  storeBar.innerHTML = `<div class="store-bar">
-    <button class="btn gh add-toggle" onclick="pickStore()">🛒 ${sst ? esc(sst.name) : 'Выбрать магазин'} ▾</button></div>`;
   document.getElementById('persShop').innerHTML = persBar('Умножает все количества в списке');
   [...document.querySelectorAll('#grpSeg button')].forEach((b, i) =>
     b.classList.toggle('on', (i === 0) === (st.shopGroup === 'cat')));
@@ -1376,7 +1473,9 @@ async function renderShop() {
   } catch (e) {
     const c = localStorage.getItem('shopCache3:' + week);
     if (!c) {
-      document.getElementById('shopList').innerHTML = `<div class="empty">${esc(e.message)}</div>`;
+      const el = document.getElementById('shopList');
+      el.classList.add('card');
+      el.innerHTML = `<div class="empty">${esc(e.message)}</div>`;
       return;
     }
     s = JSON.parse(c);
@@ -1385,16 +1484,33 @@ async function renderShop() {
         показываю сохранённый список. Галочки работают и без сети.</div></div>`;
   }
   const items = s.items || [];
+  const extra = (s.links || []).map(l => `<div class="chk" style="cursor:default">
+      <span class="lbl">${esc(l.name)}
+        <span class="meta">🛒 <a class="link" href="${esc(l.url)}" target="_blank">${esc(placeLabel(l.url))}</a></span></span>
+    </div>`).join('');
+  const planLinks = extra ? `<div class="sect">Ссылки из плана</div><div class="card">${extra}</div>` : '';
+  if (st.shopGroup === 'place') {              // корзины по магазинам
+    st.buyAll = items;
+    st.buyStore = '';
+    storeBar.innerHTML = `<div class="store-bar">
+      <button class="btn gh add-toggle" onclick="copyList()">📋 Скопировать список</button></div>`;
+    document.getElementById('shopList').classList.remove('card');
+    renderBaskets(items);
+    const total = items.length, bought = items.filter(it => st.checked.has('w:' + it.id)).length;
+    document.getElementById('shopFoot').innerHTML = planLinks +
+      `<div style="text-align:center;color:var(--ink3);font-size:12.5px;padding:6px 0 2px">
+        ${bought ? `куплено ${bought} из ${total}` : `${total} позиций`}${P > 1 ? ` · на ${P} чел.` : ''}</div>`;
+    return;
+  }
+  st.buyStore = '';                            // вышли из корзин — ссылки идут в выбранный магазин
+  storeBar.innerHTML = `<div class="store-bar">
+    <button class="btn gh add-toggle" onclick="pickStore()">🛒 ${sst ? esc(sst.name) : 'Выбрать магазин'} ▾</button></div>`;
+  document.getElementById('shopList').classList.add('card');
   const groups = {};
   for (const it of items) {
-    const g = st.shopGroup === 'place'
-      ? (it.place ? placeLabel(it.place) : NO_PLACE)
-      : (it.category || 'Прочее');
-    (groups[g] ||= []).push(it);
+    (groups[it.category || 'Прочее'] ||= []).push(it);
   }
   const names = Object.keys(groups);
-  if (st.shopGroup === 'place')
-    names.sort((a, b) => (a === NO_PLACE) - (b === NO_PLACE) || a.localeCompare(b, 'ru'));
   st.buyAll = names.flatMap(g => groups[g]);   // порядок как на экране — для «Купить по списку»
   let total = 0, bought = 0;
   document.getElementById('shopList').innerHTML = names.map(grp => {
@@ -1425,7 +1541,7 @@ async function renderShop() {
           <span class="link" style="font-size:12px" onclick="editPlace('${esc(it.id)}')">+ где купить</span></span>`;
       }
       const findHtml = sst && !on ? `<span class="meta" onclick="event.stopPropagation()"><span class="link" style="font-size:12px"
-          onclick="openIn('${esc(it.id)}')">${cardOf(it, sst) ? '🛒 открыть в' : '🔍 найти в'} ${esc(sst.short || sst.name)}</span></span>` : '';
+          onclick="openIn('${esc(it.id)}','${sst.id}')">${cardOf(it, sst) ? '🛒 открыть в' : '🔍 найти в'} ${esc(sst.short || sst.name)}</span></span>` : '';
       return `<div class="chk ${on ? 'on' : ''}" onclick="tick('${esc(key)}')">
         <span class="box">✓</span>
         <span class="lbl">${esc(it.name)}${it.shelf < 8 ? clock(it.shelf) : ''}
@@ -1436,12 +1552,7 @@ async function renderShop() {
   if (sst && st.buyAll.some(it => !st.checked.has('w:' + it.id)))
     storeBar.querySelector('.store-bar').insertAdjacentHTML('beforeend',
       '<button class="btn pri" onclick="buyRun()">Купить по списку</button>');
-  const extra = (s.links || []).map(l => `<div class="chk" style="cursor:default">
-      <span class="lbl">${esc(l.name)}
-        <span class="meta">🛒 <a class="link" href="${esc(l.url)}" target="_blank">${esc(placeLabel(l.url))}</a></span></span>
-    </div>`).join('');
-  document.getElementById('shopFoot').innerHTML =
-    (extra ? `<div class="sect">Ссылки из плана</div><div class="card">${extra}</div>` : '') +
+  document.getElementById('shopFoot').innerHTML = planLinks +
     `<div style="text-align:center;color:var(--ink3);font-size:12.5px;padding:6px 0 2px">
       ${bought ? `куплено ${bought} из ${total}` : `${total} позиций`}${P > 1 ? ` · на ${P} чел.` : ''}</div>`;
 }
