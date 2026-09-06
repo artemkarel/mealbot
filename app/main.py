@@ -1,6 +1,6 @@
 """FastAPI: API мини-приложения + раздача web/. Все данные — по пользователям."""
 from __future__ import annotations
-import os, json, random
+import os, json, random, logging
 from datetime import date
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.gzip import GZipMiddleware
@@ -15,6 +15,8 @@ from app.shopping import build as build_shopping
 from app import ai
 from app import auth
 from app.links import urls_by_product, save_links, loose_links
+from app import vkusvill
+from app import ref
 
 init()
 app = FastAPI(title="Meal plan")
@@ -181,6 +183,58 @@ def shopping(week: int = 0, x_init_data: str = Header(None)):
     shown = {it["place"] for it in res["items"] if it["place"]}
     res["links"] = loose_links(con, plan["id"], shown)   # ссылки без товара в справочнике
     return res
+
+@app.post("/api/cart/vkusvill")
+def cart_vkusvill(payload: dict, x_init_data: str = Header(None)):
+    """Ссылки на готовую корзину ВкусВилл для позиций закупки (body: {week, ids}).
+    ids — какие товары класть (некупленные); пусто = все. До 30 позиций на ссылку;
+    количество считаем от сырой потребности, а не от нашей фасовки."""
+    uid = me(x_init_data)["id"]
+    con = connect()
+    body = payload if isinstance(payload, dict) else {}
+    try:
+        week = int(body.get("week") or 0)
+    except (TypeError, ValueError):
+        week = 0
+    raw_ids = body.get("ids")
+    ids = {x for x in raw_ids if isinstance(x, str)} if isinstance(raw_ids, list) else set()
+    plan = week_plan(con, uid, week) or active_plan(con, uid)
+    rows = [it for d in range(7) for it in day_items(con, uid, plan["id"], d)]
+    res = build_shopping(plan["id"], persons=persons_of(con, uid), items=rows)
+    vv = {r["product"]: dict(r) for r in con.execute("SELECT * FROM vv_items")}
+    prods = ref.products()
+    agg, skipped = {}, []
+    for it in res["items"]:
+        if ids and it["id"] not in ids:
+            continue
+        v = vv.get(it["id"])
+        if not v:
+            skipped.append(it["name"]); continue
+        p = prods.get(it["id"]) or {}
+        need = (it.get("early") or 0) + (it.get("late") or 0)      # сырая потребность до округления
+        kg = vkusvill.need_kg(need, it["unit"], p.get("unit_g"))
+        pcs = need if (it["unit"] or "г") == "шт" else 0
+        a = agg.get(v["xml_id"])
+        if a:                                    # две позиции с одной карточкой — одна строка корзины
+            a["kg"] += kg; a["pcs"] += pcs; a["name"] += " + " + it["name"]; a["ids"].append(it["id"])
+        else:
+            agg[v["xml_id"]] = {"id": it["id"], "name": it["name"], "vv_name": v["name"], "xml_id": v["xml_id"],
+                                "kg": kg, "pcs": pcs, "ids": [it["id"]], "_v": v}
+    goods = []
+    for a in agg.values():
+        v = a.pop("_v")
+        a["q"] = vkusvill.quantity(a.pop("kg"), v["unit"], v["weight_kg"], v.get("pcs"), a.pop("pcs"))
+        a["q_unit"] = "кг" if v["unit"] == "кг" else "уп."
+        goods.append(a)
+    links = []
+    try:
+        for chunk in vkusvill.chunks(goods):
+            links.append({"url": vkusvill.cart_link(chunk), "count": len(chunk),
+                          "ids": [i for g in chunk for i in g["ids"]]})
+    except Exception as e:
+        logging.warning("vkusvill cart_link: %r", e)
+        raise HTTPException(502, "ВкусВилл сейчас не отвечает — попробуй ещё раз через минуту или собери по порядку")
+    return {"links": links, "items": goods, "skipped": skipped}
 
 @app.post("/api/place")
 def set_place(product: str, place: str = "", x_init_data: str = Header(None)):

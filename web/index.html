@@ -1437,8 +1437,10 @@ function renderBaskets(items) {
     return `<div class="sect">🛒 ${esc(sst.name)} · ${b.items.length}</div><div class="card">` +
       b.items.map(it => basketRow(it, b.store)).join('') +
       `<div class="acts">${left
-        ? `<button class="btn pri" onclick="buyBasket('${b.store}')">Собрать по порядку · ${left}</button>
-           <button class="btn gh" onclick="exclStore('${b.store}', true)">не заказывать здесь</button>`
+        ? (b.store === 'vkusvill'
+            ? `<button class="btn pri" onclick="vvCart('basket')">🧺 Корзина во ВкусВилле · ${left}</button>`
+            : `<button class="btn pri" onclick="buyBasket('${b.store}')">Собрать по порядку · ${left}</button>`) +
+          `<button class="btn gh" onclick="exclStore('${b.store}', true)">не заказывать здесь</button>`
         : '<span style="padding:6px 2px;font-size:12.5px;color:var(--ink3)">✓ всё куплено</span>'}</div></div>`;
   }).join('');
   if (dropped.length)                          // карточка есть, но ради пары позиций заказ не делаем
@@ -1452,6 +1454,53 @@ function renderBaskets(items) {
       [...st.exclStores].map(x => `${esc(storeOf(x).name)} <span class="link" onclick="exclStore('${x}', false)">вернуть</span>`).join(' · ') + '</div>';
   document.getElementById('shopList').innerHTML = html || '<div class="card"><div class="empty">Список пуст</div></div>';
 }
+/* ---- готовая корзина ВкусВилл: одна ссылка кладёт всё в корзину на сайте/в приложении ---- */
+const VV_WAIT = '<div class="empty" id="vvWait">Собираю корзину во ВкусВилле…</div>';
+async function vvCart(scope) {
+  if (st.vvBusy) return showSheet(VV_WAIT);          // запрос уже идёт — второй не шлём
+  const src = scope === 'basket' ? ((st.baskets || []).find(b => b.store === 'vkusvill') || {}).items || [] : (st.buyAll || []);
+  const ids = src.filter(it => !st.checked.has('w:' + it.id)).map(it => it.id);
+  if (!ids.length) return toast('Всё уже куплено');
+  showSheet(VV_WAIT); st.vvBusy = true;
+  let r;
+  try { r = await api('/api/cart/vkusvill', {method: 'POST', body: JSON.stringify({week, ids}),
+                       headers: {'Content-Type': 'application/json'}}); }
+  catch (e) {
+    st.vvBusy = false;
+    if (!document.getElementById('vvWait')) return;   // шторку закрыли, пока ждали
+    return showSheet(`<div class="empty">${esc(e.message)}</div>
+      <div class="note-acts"><button class="btn" onclick="closeSheet()">Закрыть</button></div>`);
+  }
+  st.vvBusy = false;
+  if (!document.getElementById('vvWait')) return;
+  st.vvRes = r; st.vvLinks = r.links.map(l => ({...l, opened: false, marked: false}));
+  vvSheet();
+}
+function vvSheet() {
+  const r = st.vvRes, L = st.vvLinks;
+  const rows = r.items.map(it => `<div class="row"><span class="n">${esc(it.name)}<span class="meta" style="display:block;font-size:12px;color:var(--ink3)">${esc(it.vv_name || '')}</span></span>
+      <span class="q">${it.q} ${esc(it.q_unit)}</span></div>`).join('');
+  const links = L.map((l, i) => `<button class="btn ${l.opened ? 'gh' : 'pri'} big" onclick="vvOpen(${i})">
+      ${l.opened ? '↗ Открыть ещё раз' : '🧺 Открыть корзину'}${L.length > 1 ? ` ${i + 1} из ${L.length}` : ''} · ${l.count}</button>` +
+    (l.opened && !l.marked ? `<button class="btn big" onclick="vvDone(${i})">✓ Заказал — отметить купленным</button>` : '') +
+    (l.marked ? '<div class="meta" style="font-size:12px;color:var(--ink3);text-align:center;margin:-2px 0 8px">✓ отмечено купленным</div>' : '')).join('');
+  showSheet(`<div class="buy">
+    <div style="font-weight:600;font-size:16px;margin-bottom:4px">Корзина во ВкусВилле</div>
+    <div class="sub">${r.items.length} ${plural(r.items.length, 'товар', 'товара', 'товаров')}${r.skipped.length ? ` · ${r.skipped.length} без карточки` : ''}</div>
+    ${L.length > 1 ? `<div class="meta" style="font-size:12px;color:var(--ink3);margin:0 0 8px">Корзина в ${L.length} ${plural(L.length, 'часть', 'части', 'частей')}: каждая ссылка заменяет корзину на сайте целиком. Оформи заказ по первой, потом открывай следующую.</div>` : ''}
+    ${links || '<div class="empty">Нечего класть в корзину</div>'}
+    <div class="card" style="margin:6px 0 8px"><div class="rows">${rows}</div></div>
+    ${r.skipped.length ? `<div class="meta" style="font-size:12px;color:var(--ink3)">Не нашлось во ВкусВилле: ${esc(r.skipped.join(', '))}</div>` : ''}
+    <div class="note-acts" style="justify-content:center"><button class="btn gh" onclick="closeSheet()">Закрыть</button></div>
+  </div>`);
+}
+function vvOpen(i) { openExt(st.vvLinks[i].url); st.vvLinks[i].opened = true; vvSheet(); }
+function vvDone(i) {
+  (st.vvLinks[i].ids || []).forEach(id => st.checked.add('w:' + id));
+  localStorage.setItem('shopChecked', JSON.stringify([...st.checked]));
+  st.vvLinks[i].marked = true; renderShop(); vvSheet();
+}
+function plural(n, a, b, c) { const m = n % 100, k = n % 10; return m > 10 && m < 20 ? c : k === 1 ? a : k > 1 && k < 5 ? b : c; }
 function buyDone(id) {
   st.checked.add('w:' + id);
   localStorage.setItem('shopChecked', JSON.stringify([...st.checked]));
@@ -1550,8 +1599,9 @@ async function renderShop() {
     }).join('');
   }).join('') || '<div class="empty">Список пуст</div>';
   if (sst && st.buyAll.some(it => !st.checked.has('w:' + it.id)))
-    storeBar.querySelector('.store-bar').insertAdjacentHTML('beforeend',
-      '<button class="btn pri" onclick="buyRun()">Купить по списку</button>');
+    storeBar.querySelector('.store-bar').insertAdjacentHTML('beforeend', sst.id === 'vkusvill'
+      ? '<button class="btn pri" onclick="vvCart(\'all\')">🧺 Корзина во ВкусВилле</button>'
+      : '<button class="btn pri" onclick="buyRun()">Купить по списку</button>');
   document.getElementById('shopFoot').innerHTML = planLinks +
     `<div style="text-align:center;color:var(--ink3);font-size:12.5px;padding:6px 0 2px">
       ${bought ? `куплено ${bought} из ${total}` : `${total} позиций`}${P > 1 ? ` · на ${P} чел.` : ''}</div>`;

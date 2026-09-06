@@ -56,6 +56,16 @@ if Path("data/store_links.csv").exists():
     con.executemany("INSERT OR REPLACE INTO store_links(product,store,url,name) VALUES(?,?,?,?)",
                     [(r["product"].strip(), r["store"].strip(), r["url"].strip(), (r.get("name") or "").strip() or None) for r in rows])
     print(f"карточек в магазинах: {len(rows)}")
+con.execute("DELETE FROM vv_items")
+if Path("data/vv_items.csv").exists():
+    rows = [r for r in read_csv("data/vv_items.csv") if (r.get("product") or "").strip() and num(r.get("xml_id"))]
+    known = {r[0] for r in con.execute("SELECT id FROM products")}
+    rows = [r for r in rows if r["product"].strip() in known]
+    con.executemany("INSERT OR REPLACE INTO vv_items(product,xml_id,unit,weight_kg,price,name,pcs) VALUES(?,?,?,?,?,?,?)",
+                    [(r["product"].strip(), int(num(r["xml_id"])), (r.get("unit") or "").strip() or None,
+                      num(r.get("weight_kg")), num(r.get("price")), (r.get("name") or "").strip() or None,
+                      num(r.get("pcs"))) for r in rows])
+    print(f"карточек ВкусВилл с единицами: {len(rows)}")
 con.commit()
 need = con.execute("SELECT COUNT(*) c FROM dishes WHERE note LIKE 'ПРОВЕРЬ%'").fetchone()["c"]
 print(f"строк с пометкой ПРОВЕРЬ: {need}")

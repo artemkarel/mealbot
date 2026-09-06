@@ -11,6 +11,11 @@ CREATE TABLE IF NOT EXISTS products (
 CREATE TABLE IF NOT EXISTS store_links (
   product TEXT, store TEXT, url TEXT NOT NULL, name TEXT, PRIMARY KEY(product, store));
 
+-- карточки ВкусВилл с единицей и весом упаковки — для готовой корзины (data/vv_items.csv)
+CREATE TABLE IF NOT EXISTS vv_items (
+  product TEXT PRIMARY KEY, xml_id INT NOT NULL, unit TEXT, weight_kg REAL, price REAL, name TEXT,
+  pcs REAL);                                       -- штук в упаковке (яйца «20 шт»)
+
 CREATE TABLE IF NOT EXISTS dishes (
   id INTEGER PRIMARY KEY, dish TEXT NOT NULL, type TEXT,
   product TEXT REFERENCES products(id), amount REAL, unit TEXT, coef REAL, note TEXT);
