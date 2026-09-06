@@ -100,6 +100,14 @@ body{margin:0;background:#D8DCD6;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .btn.gh{border-style:dashed;color:var(--ink2)}
 /* кнопки «+ Добавить …» — воздушные пилюли по контуру, без карточки на всю ширину */
 .add-wrap{margin-bottom:12px}
+.store-bar{display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:12px}
+.store-bar .btn.pri{border-radius:999px;padding:8px 16px}
+.buy .name{font-size:18px;font-weight:600;line-height:1.3;margin:6px 0 4px}
+.buy .sub{color:var(--ink2);font-size:13.5px;margin-bottom:14px}
+.buy .btn{justify-content:center}
+.buy .big{width:100%;padding:12px;font-size:15px;margin-bottom:8px}
+.buy .row2{display:flex;gap:8px}
+.buy .row2 .btn{flex:1;padding:10px}
 .btn.add-toggle{background:none;border:1.5px dashed #CBD4CC;border-radius:999px;padding:8px 16px}
 .btn.add-toggle:active{background:rgba(255,255,255,.65)}
 .card.eaten{opacity:.55}
@@ -317,6 +325,7 @@ body.tg{padding:0;background:var(--bg);
       <button class="on" onclick="setGrp('cat',this)">По категориям</button>
       <button onclick="setGrp('place',this)">По магазинам</button>
     </div>
+    <div id="storeBar"></div>
     <div id="shopHead"></div>
     <div id="persShop"></div>
     <div class="card" id="shopList"><div class="empty">Загрузка…</div></div>
@@ -542,6 +551,7 @@ let supData = null;                          // БАДы пользовател�
 let nav = {tab: 'today', stack: []};
 let st = {cookDays: 1, editPlace: null, editRec: null,
           shopGroup: localStorage.getItem('shopGroup') || 'cat',
+          store: localStorage.getItem('shopStore') || '', buyAll: null, buyList: [], buyIdx: 0,
           checked: new Set(JSON.parse(localStorage.getItem('shopChecked') || '[]'))};
 
 /* ---------- утилиты ---------- */
@@ -1262,8 +1272,99 @@ function placeLabel(p) {
   try { return new URL(p).hostname.replace(/^www\./, ''); } catch (e) { return p; }
 }
 const NO_PLACE = 'Без места покупки';
+/* онлайн-магазины: поиск по ссылке; если у товара уже есть карточка на сайте магазина — открываем её */
+const STORES = [
+  {id:'vkusvill', name:'ВкусВилл', short:'ВкусВилле', host:'vkusvill.ru', search:'https://vkusvill.ru/search/?q={q}'},
+  {id:'lenta', name:'Лента', short:'Ленте', host:'lenta.com', search:'https://lenta.com/search/{q}/'},
+  {id:'perekrestok', name:'Перекрёсток', short:'Перекрёстке', host:'perekrestok.ru', search:'https://www.perekrestok.ru/cat/search?search={q}', note:'на сайте нужно один раз указать адрес доставки'},
+  {id:'pyaterochka', name:'Пятёрочка', short:'Пятёрочке', host:'5ka.ru', search:'https://5ka.ru/search/?text={q}'},
+  {id:'magnit', name:'Магнит', short:'Магните', host:'magnit.ru', search:'https://magnit.ru/search?term={q}'},
+  {id:'samokat', name:'Самокат', short:'Самокате', host:'samokat.ru', search:'https://samokat.ru/search?value={q}'},
+  {id:'lavka', name:'Яндекс Лавка', short:'Лавке', host:'lavka.yandex.ru', search:'https://lavka.yandex.ru/search?text={q}'},
+  {id:'kuper', name:'Купер', short:'Купере', host:'kuper.ru', search:'https://kuper.ru/multisearch?q={q}', note:'Лента, Ашан, Метро и другие через одно приложение'}
+];
+const storeOf = id => STORES.find(x => x.id === id);
+function openExt(url) {
+  if (maxApp && maxApp.openLink) maxApp.openLink(url);        // MAX — свой мост
+  else if (tg && tg.initData && tg.openLink) tg.openLink(url);  // Telegram
+  else window.open(url, '_blank');
+}
+const cardOf = (it, sst) => it.cards && it.cards[sst.id] && it.cards[sst.id].url ? it.cards[sst.id] : null;
+function storeUrl(it, sst) {
+  const c = cardOf(it, sst);
+  if (c) return c.url;                          // подобранная карточка именно этого товара
+  if (it.place && /^https?:\/\//.test(it.place)) {
+    try {
+      const h = new URL(it.place).hostname.replace(/^www\./, '');
+      if (h === sst.host || h.endsWith('.' + sst.host)) return it.place;
+    } catch (e) {}
+  }
+  return sst.search.replace('{q}', encodeURIComponent(it.q || it.name));
+}
+function openIn(id) {
+  const sst = storeOf(st.store), it = (st.buyAll || []).find(x => x.id === id);
+  if (sst && it) openExt(storeUrl(it, sst));
+}
+function pickStore() {
+  showSheet(`<div style="font-weight:600;font-size:16px;margin-bottom:6px">Где покупаем</div>
+    <div class="card" style="margin:0 0 10px">` + STORES.map(x =>
+      `<div class="chk vopt ${x.id === st.store ? 'sel' : ''}" style="align-items:center" onclick="setStore('${x.id}')">
+        <span class="vdot" style="margin-top:0"></span><span class="lbl">${esc(x.name)}<span class="meta">${esc(x.note || '')}</span></span></div>`).join('') +
+    `</div><div class="note-acts"><button class="btn" onclick="copyList()">Скопировать список текстом</button>
+      ${st.store ? '<button class="btn" onclick="setStore(\'\')">Без магазина</button>' : ''}</div>`);
+}
+function setStore(id) {
+  st.store = id; localStorage.setItem('shopStore', id); closeSheet(); renderShop();
+}
+async function copyList() {
+  if (!st.buyAll) return toast('Список ещё загружается');
+  try {
+    const txt = st.buyAll.map(it => `${it.name} — ${it.qty.value} ${it.qty.unit}`).join('\n');
+    await navigator.clipboard.writeText(txt); toast('Список скопирован'); }
+  catch (e) { toast('Не удалось скопировать'); }
+}
+/* покупка по списку: одна позиция за раз — открыть в магазине, отметить, дальше */
+function buyRun() {
+  if (!st.buyAll) return toast('Список ещё загружается');
+  st.buyList = st.buyAll.filter(it => !st.checked.has('w:' + it.id));
+  st.buyIdx = 0;
+  if (!st.buyList.length) return toast('Всё уже куплено');
+  buyStep(0);
+}
+function buyStep(d) {
+  st.buyIdx += d;
+  const sst = storeOf(st.store), list = st.buyList;
+  if (st.buyIdx >= list.length) {
+    return showSheet(`<div class="empty">Список пройден 🎉</div>
+      <div class="note-acts"><button class="btn pri" onclick="closeSheet()">Готово</button></div>`);
+  }
+  const it = list[st.buyIdx], card = cardOf(it, sst);
+  const meta = [it.qty.packs && it.qty.packs > 1 ? it.qty.packs + ' уп.' : null, it.tag,
+                [...new Set(it.days)].map(x => DS[x]).join(', ')].filter(Boolean).join(' · ');
+  showSheet(`<div class="buy">
+    <div class="sect" style="margin:0">${st.buyIdx + 1} из ${list.length} · ${esc(it.category || 'Прочее')}</div>
+    <div class="name">${esc(it.name)}</div>
+    <div class="sub"><b>${it.qty.value} ${esc(it.qty.unit)}</b>${meta ? ' · ' + esc(meta) : ''}${
+      card ? `<div class="meta" style="margin-top:4px">В магазине: ${esc(card.name || 'карточка товара')}</div>` : ''}</div>
+    <button class="btn pri big" onclick="openIn('${esc(it.id)}')">${card ? 'Открыть карточку в' : 'Найти в'} ${esc(sst.short || sst.name)}</button>
+    <div class="row2">
+      <button class="btn" onclick="buyDone('${esc(it.id)}')">✓ Куплено, дальше</button>
+      <button class="btn gh" onclick="buyStep(1)">Пропустить</button></div>
+    <div class="note-acts" style="justify-content:center"><button class="btn gh" onclick="closeSheet()">Закрыть</button></div>
+  </div>`);
+}
+function buyDone(id) {
+  st.checked.add('w:' + id);
+  localStorage.setItem('shopChecked', JSON.stringify([...st.checked]));
+  renderShop(); buyStep(1);
+}
 async function renderShop() {
+  if (!shopData) st.buyAll = null;             // до загрузки/кэша списка нет — кнопки покупки ждут
   document.getElementById('shopHead').innerHTML = '';
+  const sst = storeOf(st.store);
+  const storeBar = document.getElementById('storeBar');
+  storeBar.innerHTML = `<div class="store-bar">
+    <button class="btn gh add-toggle" onclick="pickStore()">🛒 ${sst ? esc(sst.name) : 'Выбрать магазин'} ▾</button></div>`;
   document.getElementById('persShop').innerHTML = persBar('Умножает все количества в списке');
   [...document.querySelectorAll('#grpSeg button')].forEach((b, i) =>
     b.classList.toggle('on', (i === 0) === (st.shopGroup === 'cat')));
@@ -1294,6 +1395,7 @@ async function renderShop() {
   const names = Object.keys(groups);
   if (st.shopGroup === 'place')
     names.sort((a, b) => (a === NO_PLACE) - (b === NO_PLACE) || a.localeCompare(b, 'ru'));
+  st.buyAll = names.flatMap(g => groups[g]);   // порядок как на экране — для «Купить по списку»
   let total = 0, bought = 0;
   document.getElementById('shopList').innerHTML = names.map(grp => {
     const arr = groups[grp];
@@ -1322,13 +1424,18 @@ async function renderShop() {
         placeHtml = `<span class="meta" onclick="event.stopPropagation()">
           <span class="link" style="font-size:12px" onclick="editPlace('${esc(it.id)}')">+ где купить</span></span>`;
       }
+      const findHtml = sst && !on ? `<span class="meta" onclick="event.stopPropagation()"><span class="link" style="font-size:12px"
+          onclick="openIn('${esc(it.id)}')">${cardOf(it, sst) ? '🛒 открыть в' : '🔍 найти в'} ${esc(sst.short || sst.name)}</span></span>` : '';
       return `<div class="chk ${on ? 'on' : ''}" onclick="tick('${esc(key)}')">
         <span class="box">✓</span>
         <span class="lbl">${esc(it.name)}${it.shelf < 8 ? clock(it.shelf) : ''}
-          <span class="meta">${esc(meta)}</span>${placeHtml}</span>
+          <span class="meta">${esc(meta)}</span>${findHtml}${placeHtml}</span>
         <span class="amt num">${q}</span></div>`;
     }).join('');
   }).join('') || '<div class="empty">Список пуст</div>';
+  if (sst && st.buyAll.some(it => !st.checked.has('w:' + it.id)))
+    storeBar.querySelector('.store-bar').insertAdjacentHTML('beforeend',
+      '<button class="btn pri" onclick="buyRun()">Купить по списку</button>');
   const extra = (s.links || []).map(l => `<div class="chk" style="cursor:default">
       <span class="lbl">${esc(l.name)}
         <span class="meta">🛒 <a class="link" href="${esc(l.url)}" target="_blank">${esc(placeLabel(l.url))}</a></span></span>

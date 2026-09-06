@@ -4,7 +4,12 @@ CREATE TABLE IF NOT EXISTS products (
   id TEXT PRIMARY KEY, name TEXT NOT NULL, shelf_days INT DEFAULT 14,
   freezable INT DEFAULT 0, category TEXT, pack REAL, unit TEXT DEFAULT 'г', url TEXT,
   kcal REAL, prot REAL, fat REAL, carb REAL,       -- КБЖУ на 100 г/мл сырого продукта
-  unit_g REAL DEFAULT 1);                          -- граммов в 1 штуке (для unit='шт')
+  unit_g REAL DEFAULT 1,                           -- граммов в 1 штуке (для unit='шт')
+  search TEXT);                                    -- короткий запрос для поиска в магазине
+
+-- подобранные карточки товара в онлайн-магазинах (data/store_links.csv)
+CREATE TABLE IF NOT EXISTS store_links (
+  product TEXT, store TEXT, url TEXT NOT NULL, name TEXT, PRIMARY KEY(product, store));
 
 CREATE TABLE IF NOT EXISTS dishes (
   id INTEGER PRIMARY KEY, dish TEXT NOT NULL, type TEXT,

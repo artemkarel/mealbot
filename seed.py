@@ -30,12 +30,12 @@ con.execute("DELETE FROM products")
 rows = read_csv("data/products.csv")
 con.executemany(
     "INSERT INTO products(id,name,shelf_days,freezable,category,pack,unit,url,"
-    "kcal,prot,fat,carb,unit_g) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?)",
+    "kcal,prot,fat,carb,unit_g,search) VALUES(?,?,?,?,?,?,?,?,?,?,?,?,?,?)",
     [(r["id"].strip(), r["name"].strip(), int(num(r["shelf_days"]) or 14),
       int(num(r["freezable"]) or 0), r["category"], num(r["pack"]),
       (r["unit"] or "г").strip(), (r["url"] or "").strip() or None,
       num(r.get("kcal")), num(r.get("prot")), num(r.get("fat")), num(r.get("carb")),
-      num(r.get("unit_g")) or 1)
+      num(r.get("unit_g")) or 1, (r.get("search") or "").strip() or None)
      for r in rows if (r.get("id") or "").strip()])
 print(f"товаров: {len(rows)}")
 
@@ -48,6 +48,14 @@ con.executemany(
      for r in rows if (r.get("dish") or "").strip()])
 print(f"блюд: {len(rows)}")
 
+con.execute("DELETE FROM store_links")
+if Path("data/store_links.csv").exists():
+    rows = [r for r in read_csv("data/store_links.csv") if (r.get("product") or "").strip() and (r.get("url") or "").strip()]
+    known = {r[0] for r in con.execute("SELECT id FROM products")}
+    rows = [r for r in rows if r["product"].strip() in known]
+    con.executemany("INSERT OR REPLACE INTO store_links(product,store,url,name) VALUES(?,?,?,?)",
+                    [(r["product"].strip(), r["store"].strip(), r["url"].strip(), (r.get("name") or "").strip() or None) for r in rows])
+    print(f"карточек в магазинах: {len(rows)}")
 con.commit()
 need = con.execute("SELECT COUNT(*) c FROM dishes WHERE note LIKE 'ПРОВЕРЬ%'").fetchone()["c"]
 print(f"строк с пометкой ПРОВЕРЬ: {need}")

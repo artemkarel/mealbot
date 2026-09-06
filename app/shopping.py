@@ -33,6 +33,7 @@ def build(plan_id: int, day_from=0, day_to=6, persons=1, split_after=2, items=No
                 "id": prod["id"], "name": prod["name"], "category": prod["category"],
                 "shelf": prod["shelf_days"], "freezable": prod["freezable"],
                 "pack": prod["pack"], "unit": prod["unit"], "url": prod["url"],
+                "q": prod.get("search") or prod["name"],
                 "early": 0, "late": 0, "days": []})
             (a.__setitem__("early", a["early"] + raw) if r["day_index"] <= split_after
              else a.__setitem__("late", a["late"] + raw))

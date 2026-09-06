@@ -172,8 +172,12 @@ def shopping(week: int = 0, x_init_data: str = Header(None)):
     places = {r["product"]: r["place"] for r in con.execute(
         "SELECT product, place FROM user_places WHERE user_id=?", (uid,))}
     plan_urls = urls_by_product(con, plan["id"])   # ссылки диетолога из примечаний
+    cards = {}                                   # подобранные карточки по магазинам
+    for r in con.execute("SELECT product, store, url, name FROM store_links"):
+        cards.setdefault(r["product"], {})[r["store"]] = {"url": r["url"], "name": r["name"]}
     for it in res["items"]:
         it["place"] = places.get(it["id"]) or plan_urls.get(it["id"]) or it["url"]
+        it["cards"] = cards.get(it["id"], {})
     shown = {it["place"] for it in res["items"] if it["place"]}
     res["links"] = loose_links(con, plan["id"], shown)   # ссылки без товара в справочнике
     return res

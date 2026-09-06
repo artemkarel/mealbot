@@ -46,6 +46,8 @@ def _migrate(con):
     for c in ("kcal", "prot", "fat", "carb", "unit_g"):
         if cols and c not in cols:
             con.execute(f"ALTER TABLE products ADD COLUMN {c} REAL")
+    if cols and "search" not in cols:
+        con.execute("ALTER TABLE products ADD COLUMN search TEXT")
     cols = [r[1] for r in con.execute("PRAGMA table_info(plan_links)")]
     if cols and "product" not in cols:
         con.execute("ALTER TABLE plan_links ADD COLUMN product TEXT")
