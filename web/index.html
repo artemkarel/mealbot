@@ -66,7 +66,7 @@ body{margin:0;background:#DDE4DC;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .day-arr{flex:0 0 auto;border:0;background:none;color:var(--ink3);font-size:20px;line-height:1;
   padding:6px 3px;cursor:pointer;font-family:inherit}
 .day-arr:disabled{opacity:.25}
-.days{flex:1;display:flex;min-width:0;overflow:hidden}
+.days{flex:1;display:flex;min-width:0;overflow:hidden;padding:6px 0;margin:-6px 0}   /* место под тень выбранного дня */
 .days-track3{display:flex;flex:0 0 300%;width:300%;transform:translateX(-33.3333%)}
 .days-page{flex:0 0 33.3333%;display:flex;gap:3px;min-width:0}
 .day{flex:1 1 0;min-width:0;text-align:center;padding:7px 0 8px;border-radius:16px;
@@ -75,7 +75,7 @@ body{margin:0;background:#DDE4DC;font:15px/1.45 -apple-system,BlinkMacSystemFont
 .day .wd.we{color:var(--coral)}
 .day b{display:block;font-size:17px;font-weight:700;color:var(--ink);margin-top:2px}
 .day.on{background:linear-gradient(160deg,var(--accent-2),var(--accent));
-  box-shadow:0 4px 12px rgba(46,155,120,.30)}
+  box-shadow:0 3px 8px rgba(46,155,120,.28)}
 .day.on .wd,.day.on b{color:#fff}
 
 .scr{display:none;padding:14px 14px 92px;flex:1 0 auto}
