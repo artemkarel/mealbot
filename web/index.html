@@ -300,25 +300,9 @@ body.tg{padding:0;background:var(--bg);
   justify-content:center;font-size:19px;line-height:1}
 .meal-h .mt{display:flex;flex-direction:column;min-width:0}
 .meal-h .mt small{font-size:11.5px;color:var(--ink3);font-weight:600;margin-top:1px}
-/* неделя: столбики калорий по дням, как Weekly Activity */
-.wbars-card{padding:16px 17px 14px}
-.wb-h{display:flex;align-items:baseline;gap:8px;margin-bottom:14px}
-.wb-h .t{flex:1;font-weight:700;font-size:14.5px;letter-spacing:-.01em}
-.wb-h .avg{font-size:12px;color:var(--ink3);font-weight:600}
-.wbars{display:flex;gap:8px;align-items:flex-end;height:118px}
-.wb{flex:1;display:flex;flex-direction:column;align-items:center;gap:7px;height:100%;cursor:pointer}
-.wb-col{flex:1;width:100%;max-width:26px;display:flex;align-items:flex-end;border-radius:99px;
-  background:rgba(26,36,34,.05);overflow:hidden}
-.wb-col i{display:block;width:100%;border-radius:99px;background:linear-gradient(180deg,#BFE3D4,#9ED3BE);
-  transition:height .45s cubic-bezier(.3,.8,.4,1)}
-.wb .dl{font-size:11px;font-weight:700;color:var(--ink3);width:26px;height:26px;border-radius:50%;
-  display:flex;align-items:center;justify-content:center;flex:0 0 auto}
-.wb.on .wb-col i{background:linear-gradient(180deg,var(--accent-2),var(--accent))}
-.wb.on .dl{background:linear-gradient(160deg,var(--accent-2),var(--accent));color:#fff}
-.wb .kc{font-size:10.5px;font-weight:700;height:19px;line-height:19px;border-radius:8px;padding:0 6px;
-  color:#fff;white-space:nowrap;flex:0 0 auto}
-.wb .kc:empty{background:none}
-.wb.on .kc{background:var(--ink)}
+/* неделя: строка календаря — те же таблетки дней, что в ленте на «Сегодня» */
+.wcal{display:flex;gap:3px;background:var(--card);border-radius:22px;padding:8px 6px;
+  margin-bottom:13px;box-shadow:var(--sh)}
 /* профиль: шапка с аватаром и строки-действия с иконками в кругах */
 .me-top{display:flex;align-items:center;gap:13px;padding:6px 2px 4px}
 .ava{flex:0 0 auto;width:54px;height:54px;border-radius:50%;display:flex;align-items:center;justify-content:center;
@@ -1355,17 +1339,11 @@ async function renderWeek() {
   }
   document.getElementById('weekSect').textContent = planTitle.replace(/^План питания\s*/i, '') || 'Неделя';
   const nums = dayNums();
-  const kc = days.map(t => (t.macros && t.macros.total && t.macros.total.kcal) || 0);
-  const mx = Math.max(...kc, 1), filled = kc.filter(Boolean);
-  const avg = filled.length ? Math.round(filled.reduce((a, b) => a + b, 0) / filled.length) : 0;
   const todayIdx = week === 0 ? (new Date().getDay() + 6) % 7 : -1;
-  const chart = `<div class="card wbars-card">
-    <div class="wb-h"><span class="t">Калории по дням</span>${avg ? `<span class="avg num">≈ ${avg} в среднем</span>` : ''}</div>
-    <div class="wbars">${kc.map((v, i) => `<div class="wb ${i === todayIdx ? 'on' : ''}" onclick="weekBarTap(${i})">
-        <span class="kc num">${i === todayIdx && v ? v : ''}</span>
-        <div class="wb-col"><i style="height:${v ? Math.max(8, Math.round(v / mx * 100)) : 0}%"></i></div>
-        <span class="dl">${DS[i]}</span></div>`).join('')}</div></div>`;
-  document.getElementById('weekList').innerHTML = chart + days.map((t, i) => {
+  const cal = nums ? `<div class="wcal">${DS.map((n, i) => `<button class="day ${i === todayIdx ? 'on' : ''}"
+      onclick="weekBarTap(${i})"><span class="wd ${i >= 5 ? 'we' : ''}">${n}</span>
+      <b class="num">${nums[i]}</b></button>`).join('')}</div>` : '';
+  document.getElementById('weekList').innerHTML = cal + days.map((t, i) => {
     const prev = t.same_as.filter(x => x < i);
     const meals = [...t.meals].sort((a, b) => MEAL_ORDER.indexOf(a.meal) - MEAL_ORDER.indexOf(b.meal));
     const rows = meals.map(m => `<div class="row">
